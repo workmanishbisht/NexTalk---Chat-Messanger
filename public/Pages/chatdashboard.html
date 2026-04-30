@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexTalk - Chat Messanger</title>
+    <link rel="icon" type="image/png" href="../Assets/FavIcon/favicon.png">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/chatdashboard.css">
+</head>
+
+<body>
+
+    <!-- MOBILE TOP BAR (visible only on small screens) -->
+    <div class="mobile-topbar" id="mobileTopbar">
+        <button class="icon-btn mobile-menu-btn" id="mobileMenuBtn" title="Menu">
+            <i class="ri-menu-line"></i>
+        </button>
+        <span class="mobile-title">NexTalk</span>
+        <button class="icon-btn" id="mobileNewChatBtn" title="New Chat">
+            <i class="ri-edit-line"></i>
+        </button>
+    </div>
+
+    <!-- SIDEBAR OVERLAY (mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- SIDEBAR NAV -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <img src="./public/Assets/Logo/logo.png" alt="NexTalk" class="logo-img"
+                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+            <span class="logo-fallback">NT</span>
+        </div>
+
+        <!-- Mobile close button -->
+        <button class="sidebar-close-btn" id="sidebarCloseBtn">
+            <i class="ri-close-line"></i>
+        </button>
+
+        <ul class="nav-links">
+            <li class="nav-item tooltip-wrap active" data-tip="Dashboard">
+                <a href="#"><i class="ri-dashboard-line"></i></a>
+            </li>
+            <li class="nav-item tooltip-wrap" data-tip="Messages">
+                <a href="#"><i class="ri-message-3-line"></i></a>
+                <span class="nav-badge" id="totalUnread">0</span>
+            </li>
+            <li class="nav-item tooltip-wrap" data-tip="Groups">
+                <a href="#"><i class="ri-team-line"></i></a>
+            </li>
+            <li class="nav-item tooltip-wrap" data-tip="Favourites">
+                <a href="#"><i class="ri-star-line"></i></a>
+            </li>
+            <li class="nav-item tooltip-wrap" data-tip="Calendar">
+                <a href="#"><i class="ri-calendar-line"></i></a>
+            </li>
+            <li class="nav-item tooltip-wrap" data-tip="Files">
+                <a href="#"><i class="ri-folder-line"></i></a>
+            </li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <button class="sidebar-icon-btn tooltip-wrap" data-tip="Toggle Theme" id="themeToggleBtn">
+                <i class="ri-moon-line" id="themeIcon"></i>
+            </button>
+            <div class="nav-item tooltip-wrap" data-tip="Settings">
+                <a href="#"><i class="ri-settings-3-line"></i></a>
+            </div>
+            <div class="sidebar-avatar-wrap tooltip-wrap" data-tip="My Profile" id="avatarWrap">
+                <div class="sidebar-avatar" id="sidebarAvatar"></div>
+                <span class="presence-dot"></span>
+                <div class="profile-dropdown" id="profileDropdown">
+                    <div class="pd-user" id="pdUser"></div>
+                    <hr class="pd-divider">
+                    <button class="pd-item" id="pdProfile"><i class="ri-user-line"></i> My Profile</button>
+                    <button class="pd-item pd-logout" id="pdLogout"><i class="ri-logout-circle-r-line"></i> Log
+                        Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- CONTACTS / CHAT LIST PANEL -->
+    <aside class="contacts-panel" id="contactsPanel">
+        <div class="cp-header">
+            <h2 class="cp-title">Messages</h2>
+            <div class="cp-header-actions">
+                <button class="icon-btn" id="newChatBtn" title="New Chat">
+                    <i class="ri-edit-line"></i>
+                </button>
+                <!-- Back button for mobile (chat view → contacts) -->
+                <button class="icon-btn contacts-back-btn hidden" id="contactsBackBtn" title="Back">
+                    <i class="ri-arrow-left-line"></i>
+                </button>
+            </div>
+        </div>
+        <div class="online-strip">
+            <div class="online-strip-label">Online</div>
+            <div class="online-strip-list" id="onlineStrip"></div>
+        </div>
+        <div class="search-wrap">
+            <i class="ri-search-line"></i>
+            <input type="text" id="searchInput" placeholder="Search chats or messages…" />
+            <button class="icon-btn search-clear hidden" id="searchClearBtn"><i class="ri-close-line"></i></button>
+        </div>
+        <ul class="chat-list search-results hidden" id="searchResultsList"></ul>
+
+        <div id="normalChatLists">
+            <div class="list-section-label"><i class="ri-pushpin-line"></i> Pinned</div>
+            <ul class="chat-list" id="pinnedList"></ul>
+            <div class="list-section-label"><i class="ri-chat-4-line"></i> All Chats</div>
+            <ul class="chat-list" id="allChatList"></ul>
+        </div>
+    </aside>
+
+    <!-- MAIN CHAT AREA -->
+    <main class="chat-main" id="chatMain">
+
+        <!-- Empty state -->
+        <div class="chat-empty" id="chatEmpty">
+            <div class="chat-empty-inner">
+                <div class="empty-icon"><i class="ri-chat-smile-3-line"></i></div>
+                <h3>Pick up where you left off</h3>
+                <p>Select a conversation from the left to start chatting</p>
+            </div>
+        </div>
+
+        <!-- Active conversation view -->
+        <div class="chat-view hidden" id="chatView">
+
+            <!-- Chat Header -->
+            <header class="chat-header">
+                <div class="ch-left">
+                    <!-- Back button for mobile -->
+                    <button class="icon-btn chat-back-btn" id="chatBackBtn" title="Back">
+                        <i class="ri-arrow-left-line"></i>
+                    </button>
+                    <div class="ch-avatar-wrap">
+                        <div class="ch-avatar" id="chAvatar"></div>
+                        <span class="ch-presence" id="chPresence"></span>
+                    </div>
+                    <div class="ch-info">
+                        <span class="ch-name" id="chName">—</span>
+                        <span class="ch-status" id="chStatus">Offline</span>
+                    </div>
+                </div>
+                <div class="ch-actions">
+                    <button class="icon-btn" id="chatSearchBtn" title="Search in Chat"><i
+                            class="ri-search-line"></i></button>
+                    <button class="icon-btn ch-action-hide-sm"><i class="ri-phone-line"></i></button>
+                    <button class="icon-btn ch-action-hide-sm"><i class="ri-vidicon-line"></i></button>
+
+                    <!-- Info panel toggle (mobile) -->
+                    <button class="icon-btn info-panel-toggle-btn" id="infoPanelToggleBtn" title="Info">
+                        <i class="ri-information-line"></i>
+                    </button>
+
+                    <!-- ── 3-DOT MORE MENU ── -->
+                    <div class="more-menu-wrap">
+                        <button class="icon-btn" id="moreMenuBtn" title="More Options">
+                            <i class="ri-more-2-fill"></i>
+                        </button>
+                        <div class="more-dropdown hidden" id="moreDropdown">
+                            <button class="more-item" id="mdSearch">
+                                <i class="ri-search-line"></i> Search
+                            </button>
+                            <div class="more-divider"></div>
+                            <button class="more-item" id="mdSelectMsg">
+                                <i class="ri-chat-check-line"></i> Select Message
+                            </button>
+                            <button class="more-item" id="mdPinChat">
+                                <i class="ri-pushpin-line"></i> Pin Chat
+                            </button>
+                            <button class="more-item" id="mdEditNick">
+                                <i class="ri-edit-line"></i> Edit Nickname
+                            </button>
+                            <div class="more-divider"></div>
+                            <button class="more-item" id="mdClearChat">
+                                <i class="ri-brush-line"></i> Clear Chat
+                            </button>
+                            <button class="more-item more-item-danger" id="mdDeleteChat">
+                                <i class="ri-delete-bin-line"></i> Delete Chat
+                            </button>
+                            <button class="more-item more-item-danger" id="mdBlock">
+                                <i class="ri-forbid-line"></i> Block
+                            </button>
+                            <div class="more-divider"></div>
+                            <button class="more-item more-item-fav" id="mdAddFav">
+                                <i class="ri-star-line"></i> Add to Fav
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- In-chat search bar -->
+            <div class="chat-search-bar hidden" id="chatSearchBar">
+                <i class="ri-search-line"></i>
+                <input type="text" id="chatSearchInput" placeholder="Search in this conversation…" />
+                <span class="chat-search-count" id="chatSearchCount"></span>
+                <button class="icon-btn" id="chatSearchPrev"><i class="ri-arrow-up-s-line"></i></button>
+                <button class="icon-btn" id="chatSearchNext"><i class="ri-arrow-down-s-line"></i></button>
+                <button class="icon-btn" id="chatSearchClose"><i class="ri-close-line"></i></button>
+            </div>
+
+            <!-- Messages -->
+            <div class="messages-area" id="messagesArea"></div>
+
+            <!-- Typing indicator -->
+            <div class="typing-row hidden" id="typingRow">
+                <div class="typing-av" id="typingAv"></div>
+                <div class="typing-bubble"><span></span><span></span><span></span></div>
+            </div>
+
+            <!-- Emoji / Sticker Panel -->
+            <div class="emoji-panel hidden" id="emojiPanel">
+                <div class="emoji-tabs">
+                    <button class="etab active" data-tab="emoji">😊 Emoji</button>
+                    <button class="etab" data-tab="sticker">🎭 Stickers</button>
+                    <button class="etab" data-tab="gif">🎬 GIF</button>
+                </div>
+                <div class="emoji-content" id="emojiContent"></div>
+            </div>
+
+            <!-- Input Bar -->
+            <div class="input-bar">
+                <div class="attach-wrap">
+                    <button class="icon-btn attach-btn" id="attachBtn" title="Attach">
+                        <i class="ri-attachment-2"></i>
+                    </button>
+                    <div class="attach-menu hidden" id="attachMenu">
+                        <label class="attach-item">
+                            <i class="ri-image-line"></i> Image
+                            <input type="file" accept="image/*" id="imgFileInput" hidden>
+                        </label>
+                        <label class="attach-item">
+                            <i class="ri-file-text-line"></i> Document
+                            <input type="file" accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx" id="docFileInput"
+                                hidden>
+                        </label>
+                        <label class="attach-item">
+                            <i class="ri-folder-upload-line"></i> Any File
+                            <input type="file" id="anyFileInput" hidden>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="input-wrap">
+                    <input type="text" id="msgInput" placeholder="Type a message…" autocomplete="off" />
+                    <button class="emoji-btn" id="emojiToggleBtn" title="Emoji & Stickers">
+                        <i class="ri-emotion-happy-line"></i>
+                    </button>
+                </div>
+
+                <button class="send-btn" id="sendBtn">
+                    <i class="ri-send-plane-fill"></i>
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- RIGHT INFO PANEL -->
+    <aside class="info-panel" id="infoPanel">
+        <!-- Mobile close button -->
+        <button class="info-panel-close-btn" id="infoPanelCloseBtn">
+            <i class="ri-close-line"></i>
+        </button>
+
+        <div class="ip-profile-card" id="ipProfileCard">
+            <div class="ip-avatar" id="ipAvatar"></div>
+            <div class="ip-name" id="ipName">—</div>
+            <div class="ip-status" id="ipStatus">—</div>
+            <div class="ip-actions">
+                <button class="icon-btn"><i class="ri-phone-line"></i></button>
+                <button class="icon-btn"><i class="ri-vidicon-line"></i></button>
+                <button class="icon-btn"><i class="ri-user-add-line"></i></button>
+            </div>
+        </div>
+        <div class="ip-section">
+            <div class="ip-section-label">Online Now</div>
+            <ul class="ip-online-list" id="ipOnlineList">
+                <li class="ip-no-users">No users online</li>
+            </ul>
+        </div>
+        <div class="ip-section">
+            <div class="ip-section-label">Shared Media</div>
+            <div class="media-grid" id="mediaGrid">
+                <div class="media-placeholder"><i class="ri-image-line"></i></div>
+                <div class="media-placeholder"><i class="ri-file-pdf-line"></i></div>
+                <div class="media-placeholder"><i class="ri-image-line"></i></div>
+                <div class="media-placeholder"><i class="ri-vidicon-line"></i></div>
+            </div>
+        </div>
+        <div class="ip-section">
+            <div class="ip-section-label">Share Room</div>
+            <div class="share-box">
+                <span id="shareUrl"></span>
+                <button class="copy-btn" onclick="copyRoomLink()">
+                    <i class="ri-links-line"></i>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- INFO PANEL OVERLAY (mobile) -->
+    <div class="info-panel-overlay" id="infoPanelOverlay"></div>
+
+    <!-- NEW CHAT MODAL -->
+    <div class="modal-overlay hidden" id="newChatModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="ri-edit-line"></i> New Chat</h3>
+                <button class="icon-btn" id="newChatModalClose"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="modal-search-wrap">
+                <i class="ri-search-line"></i>
+                <input type="text" id="newChatSearch" placeholder="Search users…" autocomplete="off" />
+            </div>
+            <ul class="modal-user-list" id="newChatUserList">
+                <li class="modal-empty">Loading users…</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- MESSAGE CONTEXT MENU -->
+    <div class="msg-ctx-menu hidden" id="msgCtxMenu">
+        <button class="ctx-item" id="ctxEdit"><i class="ri-edit-line"></i> Edit</button>
+        <button class="ctx-item ctx-delete" id="ctxDelete"><i class="ri-delete-bin-line"></i> Delete</button>
+    </div>
+
+    <!-- EDIT MESSAGE MODAL -->
+    <div class="modal-overlay hidden" id="editMsgModal">
+        <div class="modal-box modal-sm">
+            <div class="modal-header">
+                <h3><i class="ri-edit-line"></i> Edit Message</h3>
+                <button class="icon-btn" id="editMsgClose"><i class="ri-close-line"></i></button>
+            </div>
+            <textarea id="editMsgInput" rows="3" placeholder="Edit your message…"></textarea>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="editMsgCancel">Cancel</button>
+                <button class="btn-primary" id="editMsgSave">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── EDIT NICKNAME MODAL ── -->
+    <div class="modal-overlay hidden" id="editNickModal">
+        <div class="modal-box modal-sm">
+            <div class="modal-header">
+                <h3><i class="ri-edit-line"></i> Edit Nickname</h3>
+                <button class="icon-btn" id="editNickClose"><i class="ri-close-line"></i></button>
+            </div>
+            <div style="padding:12px 18px;">
+                <input type="text" id="editNickInput" placeholder="Enter nickname…" class="nick-input" />
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="editNickCancel">Cancel</button>
+                <button class="btn-primary" id="editNickSave">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SELECT MESSAGES BOTTOM BAR ── -->
+    <div class="select-bar hidden" id="selectBar">
+        <button class="icon-btn select-bar-btn" id="selectCancel" title="Cancel">
+            <i class="ri-close-line"></i>
+        </button>
+        <span id="selectCount">0 selected</span>
+        <div class="select-bar-actions">
+            <button class="icon-btn select-bar-btn" id="selectDelete" title="Delete Selected">
+                <i class="ri-delete-bin-line"></i>
+            </button>
+            <button class="icon-btn select-bar-btn" id="selectForward" title="Forward">
+                <i class="ri-share-forward-line"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toastContainer"></div>
+
+    <!-- Firebase + App JS -->
+    <script type="module" src="../javascript/chatdashboard.js"></script>
+
+</body>
+
+</html>

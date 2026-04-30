@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexTalk - Profile Setup</title>
+     <!-- Favicon -->
+    <link rel="icon" type="image/png" href="../Assets/FavIcon/favicon.png">
+    <!-- Remix Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/profilesetup.css">
+</head>
+
+<body>
+
+    <div id="toastContainer"></div>
+
+    <div class="setup-wrapper" id="setupWrapper">
+
+        <div class="progress-bar-wrap">
+            <div class="progress-meta">
+                <span>Step 1 of 1</span>
+                <span>Almost there</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill"></div>
+            </div>
+        </div>
+
+        <div class="setup-card">
+
+            <div class="card-header">
+                <h1>Complete Your Profile</h1>
+                <p>Set up your profile to start chatting</p>
+            </div>
+
+            <div class="avatar-wrap">
+                <div class="avatar-ring">
+                    <img id="avatarPreview" src="" alt="Avatar">
+                    <div class="avatar-placeholder" id="avatarPlaceholder">
+                        <i class="ri-user-3-line"></i>
+                    </div>
+                </div>
+                <label class="avatar-upload-btn" for="avatarInput">
+                    <i class="ri-camera-fill"></i>
+                </label>
+                <input type="file" id="avatarInput" accept="image/*" hidden>
+            </div>
+
+            <div class="form-body">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <div class="input-box">
+                        <i class="ri-user-smile-line"></i>
+                        <input type="text" id="fullName" placeholder="John Doe">
+                    </div>
+                    <span class="field-error" id="nameErr"></span>
+                </div>
+
+                <div class="form-group">
+                    <label>Status</label>
+                    <div class="input-box">
+                        <i class="ri-chat-smile-2-line"></i>
+                        <input type="text" id="statusText" placeholder="Hey there! I'm using NexTalk">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-actions">
+                <button class="btn-continue" id="continueBtn">Continue</button>
+                <button class="btn-skip" id="skipBtn">Skip for now</button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- script file here -->
+    <script type="module" src="../javascript/profilesetup.js"></script>
+
+</body>
+
+</html>

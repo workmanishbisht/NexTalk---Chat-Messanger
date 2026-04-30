@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexTalk - Login</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="../Assets/FavIcon/favicon.png">
+    <!-- Remix Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/authentication.css">
+</head>
+
+<body>
+
+    <div id="toastContainer"></div>
+
+    <section class="auth">
+        <div class="auth-container">
+
+            <div class="auth-left">
+                <div class="auth-logo">
+                    <a href="#">
+                        <img src="../Assets/Logo/nextalk.png" alt="NexTalk">
+                    </a>
+                </div>
+
+                <h2 class="auth-title">Welcome to NexTalk</h2>
+                <p class="auth-sub">Access your account or create a new one.</p>
+
+                <div class="auth-tabs">
+                    <button class="tab active" data-tab="signup">Sign up</button>
+                    <button class="tab" data-tab="login">Log in</button>
+                </div>
+
+                <form id="signupForm">
+                    <div class="form-group">
+                        <label>Full name</label>
+                        <input id="signupName" type="text" placeholder="Enter your name">
+                        <span class="field-error" id="signupNameErr"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input id="signupEmail" type="email" placeholder="Enter your email">
+                        <span class="field-error" id="signupEmailErr"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <div class="input-box">
+                            <input id="signupPassword" type="password" placeholder="Create a password">
+                            <span class="toggle"><i class="ri-eye-line"></i></span>
+                        </div>
+                        <span class="field-error" id="signupPasswordErr"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Repeat password</label>
+                        <div class="input-box">
+                            <input id="signupConfirm" type="password" placeholder="Repeat your password">
+                            <span class="toggle"><i class="ri-eye-line"></i></span>
+                        </div>
+                        <span class="field-error" id="signupConfirmErr"></span>
+                    </div>
+                    <button type="button" class="btn" id="signupBtn">Create Account</button>
+                </form>
+
+                <form id="loginForm" class="hidden">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input id="loginEmail" type="email" placeholder="Enter your email">
+                        <span class="field-error" id="loginEmailErr"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <div class="input-box">
+                            <input id="loginPassword" type="password" placeholder="Enter your password">
+                            <span class="toggle"><i class="ri-eye-line"></i></span>
+                        </div>
+                        <span class="field-error" id="loginPasswordErr"></span>
+                    </div>
+                    <div class="extra">
+                        <label><input type="checkbox" id="rememberMe"> Remember me</label>
+                        <a href="#" id="forgotBtn">Forgot password?</a>
+                    </div>
+                    <button type="button" class="btn" id="loginBtn">Login</button>
+                </form>
+
+                <form id="resetForm" class="hidden">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input id="resetEmail" type="email" placeholder="Enter your email">
+                        <span class="field-error" id="resetEmailErr"></span>
+                    </div>
+                    <button type="button" class="btn" id="resetBtn">Reset Password</button>
+                    <p class="back-link"><a href="#" id="backToLogin"><i class="ri-arrow-left-line"></i> Back to
+                            Login</a></p>
+                </form>
+
+                <div class="social">
+                    <button type="button" id="googleBtn">
+                        <i class="ri-google-fill"></i>
+                        <span>Google</span>
+                    </button>
+                    <button type="button" id="appleBtn">
+                        <i class="ri-apple-fill"></i>
+                        <span>Apple</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="auth-right">
+                <img id="authImage" src="../Assets/Auth/login.png" alt="auth">
+            </div>
+
+        </div>
+    </section>
+
+    <!-- script file here -->
+    <script type="module" src="../javascript/auth.js"></script>
+
+</body>
+
+</html>

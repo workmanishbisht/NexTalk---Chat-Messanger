@@ -1,0 +1,439 @@
+@import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --primary: #008080;
+    --primary-dark: #006666;
+    --primary-light: #33AFAF;
+    --bg: #F2FBFB;
+    --bg-alt: #E6F7F7;
+    --text: #0F2A2A;
+    --text-grey: #6B7280;
+    --border: rgba(0, 128, 128, 0.15);
+    --white: #ffffff;
+    --shadow: 0 20px 50px rgba(0, 0, 0, 0.08);
+    --error: #e53e3e;
+    --success: #008080;
+    --warning: #d97706;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Work Sans', sans-serif;
+    background: linear-gradient(135deg, #F2FBFB, #E0F7F7);
+    color: var(--text);
+}
+
+#toastContainer {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: 'Work Sans', sans-serif;
+    color: #fff;
+    min-width: 260px;
+    max-width: 380px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    pointer-events: all;
+    animation: toastIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.toast.hide {
+    animation: toastOut 0.3s ease forwards;
+}
+
+.toast.success {
+    background: linear-gradient(135deg, #008080, #33AFAF);
+}
+
+.toast.error {
+    background: linear-gradient(135deg, #e53e3e, #fc8181);
+}
+
+.toast.warning {
+    background: linear-gradient(135deg, #d97706, #fbbf24);
+}
+
+.toast i {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+@keyframes toastIn {
+    from {
+        opacity: 0;
+        transform: translateY(-16px) scale(0.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes toastOut {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(-12px) scale(0.92);
+    }
+}
+
+.field-error {
+    font-size: 12px;
+    color: var(--error);
+    margin-top: 5px;
+    display: block;
+    min-height: 16px;
+}
+
+.form-group input.invalid {
+    border-color: var(--error) !important;
+    box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.1) !important;
+}
+
+.auth {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+}
+
+.auth-container {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    align-items: stretch;
+    border-radius: 20px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(20px);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    min-height: 620px;
+}
+
+.auth-left {
+    flex: 1;
+    padding: 50px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+.auth-logo img {
+    height: 40px;
+    margin-bottom: 20px;
+}
+
+.auth-title {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.auth-sub {
+    font-size: 14px;
+    color: var(--text-grey);
+    margin-bottom: 25px;
+    margin-top: 6px;
+}
+
+.auth-tabs {
+    display: flex;
+    background: var(--bg-alt);
+    border-radius: 12px;
+    padding: 5px;
+    margin-bottom: 25px;
+}
+
+.tab {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-weight: 500;
+    font-family: 'Work Sans', sans-serif;
+    color: var(--text-grey);
+    border-radius: 10px;
+    transition: 0.3s;
+    font-size: 14px;
+}
+
+.tab.active {
+    background: var(--white);
+    color: var(--text);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+#signupForm,
+#loginForm,
+#resetForm {
+    width: 100%;
+}
+
+.form-group {
+    margin-bottom: 14px;
+}
+
+.form-group label {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    display: block;
+    color: var(--text);
+}
+
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    font-family: 'Work Sans', sans-serif;
+    color: var(--text);
+}
+
+.form-group input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 128, 128, 0.12);
+}
+
+.input-box {
+    position: relative;
+}
+
+.input-box input {
+    padding-right: 42px !important;
+}
+
+.toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-grey);
+    transition: color 0.2s;
+    user-select: none;
+}
+
+.toggle:hover {
+    color: var(--primary);
+}
+
+.toggle i {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.btn {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #008080, #33AFAF);
+    color: var(--white);
+    font-weight: 600;
+    font-size: 14px;
+    font-family: 'Work Sans', sans-serif;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+    letter-spacing: 0.3px;
+    margin-top: 4px;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(0, 128, 128, 0.25);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.extra {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    margin-bottom: 16px;
+    color: var(--text-grey);
+    gap: 10px;
+}
+
+.extra label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.extra input[type="checkbox"] {
+    accent-color: var(--primary);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.extra a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.extra a:hover {
+    text-decoration: underline;
+}
+
+.back-link {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 13px;
+}
+
+.back-link a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: gap 0.2s;
+}
+
+.back-link a:hover {
+    gap: 8px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.social {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.social button {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: transform 0.2s, background 0.2s;
+    font-family: 'Work Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.social button i {
+    font-size: 17px;
+}
+
+.social button:hover {
+    transform: translateY(-2px);
+    background: var(--bg-alt);
+}
+
+.social button:first-child i {
+    color: #EA4335;
+}
+
+.social button:last-child i {
+    color: #000000;
+}
+
+.auth-right {
+    flex: 1;
+    overflow: hidden;
+}
+
+.auth-right img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: opacity 0.3s ease;
+}
+
+@media (max-width: 992px) {
+    .auth-container {
+        flex-direction: column;
+        min-height: unset;
+    }
+
+    .auth-right {
+        height: 250px;
+        flex: unset;
+    }
+}
+
+@media (max-width: 768px) {
+    .auth-left {
+        padding: 30px;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-title {
+        font-size: 22px;
+    }
+
+    .auth-sub {
+        font-size: 13px;
+    }
+
+    .social button span {
+        display: none;
+    }
+}
