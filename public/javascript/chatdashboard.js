@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// chatdashboard.js — NexTalk real-time chat (FIXED + RESPONSIVE)
+// chatdashboard.js — NexTalk  (FIX 1: mobile sidebar profile | FIX 2: real groups | FIX 3: presence)
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -30,10 +30,11 @@ const db = getFirestore(fbApp);
 // ─── State ────────────────────────────────────────────────────────────────────
 let ME = null;
 let activeRoomId = null;
-let activeRoomMeta = { name: "", isPublic: false };
+let activeRoomMeta = { name: "", isPublic: false, isGroup: false, groupData: null };
 let msgUnsub = null;
 let typingUnsub = null;
 let presenceUnsub = null;
+let groupsUnsub = null;
 let typingTimer = null;
 let lastTypingSent = 0;
 let currentEmojiTab = "emoji";
@@ -47,6 +48,13 @@ let moreDropdownOpen = false;
 let selectMode = false;
 let selectedMsgIds = new Set();
 let favouriteChats = new Set();
+
+// Group create state
+let groupSelectedMembers = new Map(); // uid -> user object
+let selectedGroupIcon = "💬";
+
+// FIX 3: Track presence locally — only mark online when truly connected
+// We'll use serverTimestamp + a 60s threshold to decide "truly online"
 
 const ROOM_GENERAL = "general";
 const COLORS = ["#008080", "#0e9f6e", "#0ea5e9", "#7c3aed", "#db2777", "#ea580c", "#0891b2"];
@@ -105,6 +113,8 @@ const ipAvatar = $("ipAvatar");
 const ipName = $("ipName");
 const ipStatus = $("ipStatus");
 const ipOnlineList = $("ipOnlineList");
+const ipGroupMembersSection = $("ipGroupMembersSection");
+const ipGroupMembersList = $("ipGroupMembersList");
 const shareUrl = $("shareUrl");
 const toastContainer = $("toastContainer");
 const themeToggleBtn = $("themeToggleBtn");
@@ -165,8 +175,18 @@ const selectCancel = $("selectCancel");
 const selectCount = $("selectCount");
 const selectDelete = $("selectDelete");
 const selectForward = $("selectForward");
+const groupSettingsBtn = $("groupSettingsBtn");
+const groupSettingsModal = $("groupSettingsModal");
+const groupSettingsModalClose = $("groupSettingsModalClose");
+const groupSettingsCancel = $("groupSettingsCancel");
+const groupSettingsSave = $("groupSettingsSave");
+const gsGroupName = $("gsGroupName");
+const gsGroupMembersList = $("gsGroupMembersList");
+const gsAddMemberSearch = $("gsAddMemberSearch");
+const gsAddMemberList = $("gsAddMemberList");
+const gsDeleteGroup = $("gsDeleteGroup");
 
-// ─── Responsive Elements ─────────────────────────────────────────────────────
+// Responsive
 const sidebar = $("sidebar");
 const sidebarOverlay = $("sidebarOverlay");
 const sidebarCloseBtn = $("sidebarCloseBtn");
@@ -178,11 +198,27 @@ const infoPanelOverlay = $("infoPanelOverlay");
 const infoPanelCloseBtn = $("infoPanelCloseBtn");
 const infoPanelToggleBtn = $("infoPanelToggleBtn");
 
-// ═══════════════════════════════════════════════════════════════════════════
-// RESPONSIVE — Mobile / Tablet UI helpers
-// ═══════════════════════════════════════════════════════════════════════════
+// Groups panel
+const groupsNavItem = $("groupsNavItem");
+const groupsPanel = $("groupsPanel");
+const groupsPanelClose = $("groupsPanelClose");
+const groupsPanelOverlay = $("groupsPanelOverlay");
+const groupsList = $("groupsList");
+const createGroupBtn = $("createGroupBtn");
+const createGroupModal = $("createGroupModal");
+const createGroupModalClose = $("createGroupModalClose");
+const createGroupCancel = $("createGroupCancel");
+const createGroupSave = $("createGroupSave");
+const groupNameInput = $("groupNameInput");
+const groupDescInput = $("groupDescInput");
+const groupIconPicker = $("groupIconPicker");
+const groupMemberSearch = $("groupMemberSearch");
+const groupMemberList = $("groupMemberList");
+const selectedMembersWrap = $("selectedMembersWrap");
 
-// ── Sidebar drawer (mobile ≤ 768px) ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPONSIVE helpers
+// ═══════════════════════════════════════════════════════════════════════════
 function openSidebar() {
     sidebar?.classList.add("open");
     sidebarOverlay?.classList.add("active");
@@ -197,32 +233,28 @@ mobileMenuBtn?.addEventListener("click", openSidebar);
 sidebarCloseBtn?.addEventListener("click", closeSidebar);
 sidebarOverlay?.addEventListener("click", closeSidebar);
 
-// ── Mobile: new-chat via topbar button ───────────────────────────────────
 mobileNewChatBtn?.addEventListener("click", () => {
     closeSidebar();
     openNewChatModal();
 });
 
-// ── Mobile: enter chat view (slide contacts out, chat in) ─────────────────
 function mobileChatOpen() {
     if (window.innerWidth <= 768) {
         document.body.classList.add("chat-active");
+        closeSidebar();
+        closeGroupsPanel();
     }
 }
 
-// ── Mobile: go back from chat to contacts list ───────────────────────────
 function mobileChatClose() {
     document.body.classList.remove("chat-active");
 }
 
 chatBackBtn?.addEventListener("click", mobileChatClose);
 
-// ── Info panel (tablet ≤ 1024px + mobile) ────────────────────────────────
 function openInfoPanel() {
     infoPanel?.classList.add("open");
-    if (window.innerWidth <= 1024) {
-        infoPanelOverlay?.classList.add("active");
-    }
+    if (window.innerWidth <= 1024) infoPanelOverlay?.classList.add("active");
 }
 
 function closeInfoPanel() {
@@ -234,7 +266,6 @@ infoPanelToggleBtn?.addEventListener("click", openInfoPanel);
 infoPanelCloseBtn?.addEventListener("click", closeInfoPanel);
 infoPanelOverlay?.addEventListener("click", closeInfoPanel);
 
-// ── Reset responsive state on window resize ───────────────────────────────
 let _lastW = window.innerWidth;
 window.addEventListener("resize", () => {
     const w = window.innerWidth;
@@ -242,10 +273,9 @@ window.addEventListener("resize", () => {
         closeSidebar();
         mobileChatClose();
         closeInfoPanel();
+        closeGroupsPanel();
     }
-    if (w > 1024) {
-        closeInfoPanel();
-    }
+    if (w > 1024) closeInfoPanel();
     _lastW = w;
 });
 
@@ -283,7 +313,7 @@ function loadMyProfile(uid) {
     return raw ? JSON.parse(raw) : null;
 }
 
-// ─── Pinned Chats Persistence ─────────────────────────────────────────────
+// ─── Pinned Chats ─────────────────────────────────────────────────────────
 function loadPinnedChats(uid) {
     try {
         const raw = localStorage.getItem(`nt_pinned_${uid}`);
@@ -378,32 +408,97 @@ async function init() {
     buildAvatarEl(sidebarAvatar, ME.name, ME.avatar);
     pdUser.textContent = ME.name;
     shareUrl.textContent = window.location.href;
+
+    // FIX 1: Set data-name on avatarWrap so CSS ::after shows username in mobile footer
+    avatarWrap.setAttribute("data-name", ME.name);
+
     await setPresence(true);
+    // FIX 3: Mark offline on page unload/hide
     window.addEventListener("beforeunload", () => setPresence(false));
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") setPresence(false);
+        else setPresence(true);
+    });
+
     renderContactsList();
     listenPresence();
-    openRoom(ROOM_GENERAL, "General Chat", null, true);
+    listenGroups();
+    openRoom(ROOM_GENERAL, "General Chat", null, true, null, false);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PRESENCE
+// FIX 3: PRESENCE — accurate online/offline
+// The key fix: only consider a user "online" if their presence doc has
+// online=true AND their lastSeen was within the last 90 seconds.
+// This prevents stale "online" records from ghost-showing users as online.
 // ═══════════════════════════════════════════════════════════════════════════
 async function setPresence(online) {
     if (!ME) return;
-    await setDoc(doc(db, "presence", ME.uid), {
-        uid: ME.uid, name: ME.name, avatar: ME.avatar,
-        status: ME.status, online, lastSeen: serverTimestamp()
-    });
+    try {
+        await setDoc(doc(db, "presence", ME.uid), {
+            uid: ME.uid, name: ME.name, avatar: ME.avatar,
+            status: ME.status, online, lastSeen: serverTimestamp()
+        });
+    } catch (_) { }
+}
+
+// FIX 3: Heartbeat — keep presence fresh while active
+let presenceHeartbeat = null;
+
+function startPresenceHeartbeat() {
+    stopPresenceHeartbeat();
+    presenceHeartbeat = setInterval(() => {
+        if (document.visibilityState !== "hidden") setPresence(true);
+    }, 30000); // every 30s
+}
+
+function stopPresenceHeartbeat() {
+    if (presenceHeartbeat) { clearInterval(presenceHeartbeat); presenceHeartbeat = null; }
+}
+
+// FIX 3: Determine if a presence record is truly online.
+// online flag must be true AND lastSeen must be within 90 seconds.
+function isTrulyOnline(presenceData) {
+    if (!presenceData.online) return false;
+    if (!presenceData.lastSeen) return false;
+    const lastSeenDate = presenceData.lastSeen.toDate ? presenceData.lastSeen.toDate() : new Date(presenceData.lastSeen);
+    const diffSeconds = (Date.now() - lastSeenDate.getTime()) / 1000;
+    return diffSeconds < 90; // 90s threshold — heartbeat is every 30s so 3 missed = offline
 }
 
 function listenPresence() {
     presenceUnsub = onSnapshot(collection(db, "presence"), snap => {
-        allPresenceUsers = snap.docs.map(d => d.data());
-        const online = allPresenceUsers.filter(u => u.online);
-        renderOnlineStrip(online);
+        const rawUsers = snap.docs.map(d => d.data());
+
+        // Deduplicate by UID — prefer online record
+        const uidMap = new Map();
+        rawUsers.forEach(u => {
+            if (!uidMap.has(u.uid)) {
+                uidMap.set(u.uid, u);
+            } else {
+                // FIX 3: Prefer truly online record over stale
+                const existing = uidMap.get(u.uid);
+                const uOnline = isTrulyOnline(u);
+                const existingOnline = isTrulyOnline(existing);
+                if (uOnline && !existingOnline) uidMap.set(u.uid, u);
+            }
+        });
+
+        // FIX 3: Apply the isTrulyOnline check to the .online field
+        allPresenceUsers = Array.from(uidMap.values()).map(u => ({
+            ...u,
+            online: isTrulyOnline(u) // override stale online=true
+        }));
+
+        const onlineUsers = allPresenceUsers.filter(u => u.online);
+        renderOnlineStrip(onlineUsers);
         renderOnlinePanel(allPresenceUsers);
-        if (activeRoomId && activeRoomId !== ROOM_GENERAL) {
-            const otherUser = allPresenceUsers.find(u => u.uid !== ME.uid && getRoomId(ME.uid, u.uid) === activeRoomId);
+
+        // Update active DM chat header presence
+        if (activeRoomId && activeRoomId !== ROOM_GENERAL && !activeRoomMeta.isGroup) {
+            const otherUser = allPresenceUsers.find(
+                u => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId
+            );
             if (otherUser) updateChatHeaderPresence(otherUser);
         }
     });
@@ -419,26 +514,383 @@ function updateChatHeaderPresence(user) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FIX 2: GROUPS — Real Firestore-backed groups with admin control
+// Schema: groups/{groupId} = { name, desc, icon, adminUid, members: [uid,...], createdAt }
+// ═══════════════════════════════════════════════════════════════════════════
+
+let allGroups = []; // live list of groups from Firestore
+
+function listenGroups() {
+    // Listen to groups where current user is a member
+    // We query all groups and filter client-side (simple approach)
+    groupsUnsub = onSnapshot(collection(db, "groups"), snap => {
+        allGroups = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(g => g.members && g.members.includes(ME?.uid));
+        renderGroupsList();
+    });
+}
+
+function openGroupsPanel() {
+    groupsPanel?.classList.add("open");
+    groupsPanelOverlay?.classList.add("active");
+    renderGroupsList();
+}
+
+function closeGroupsPanel() {
+    groupsPanel?.classList.remove("open");
+    groupsPanelOverlay?.classList.remove("active");
+}
+
+function renderGroupsList() {
+    if (!groupsList) return;
+    if (!allGroups.length) {
+        groupsList.innerHTML = `
+            <li class="groups-empty">
+                <i class="ri-team-line"></i>
+                No groups yet.<br>Tap <b>+</b> to create one.
+            </li>`;
+        return;
+    }
+    groupsList.innerHTML = allGroups.map(g => {
+        const isAdmin = g.adminUid === ME?.uid;
+        const isActive = activeRoomId === `group__${g.id}`;
+        return `
+        <li class="group-item ${isActive ? "active" : ""}" data-id="${g.id}">
+            <div class="group-av">${escHtml(g.icon || "💬")}</div>
+            <div class="group-info">
+                <div class="group-name">${escHtml(g.name)}</div>
+                <div class="group-desc">${escHtml(g.desc || `${g.members?.length || 0} members`)}</div>
+            </div>
+            ${isAdmin ? `<span class="group-admin-badge">Admin</span>` : ""}
+        </li>`;
+    }).join("");
+
+    groupsList.querySelectorAll(".group-item").forEach(el => {
+        el.addEventListener("click", () => {
+            const id = el.dataset.id;
+            const grp = allGroups.find(g => g.id === id);
+            if (!grp) return;
+            closeGroupsPanel();
+            openRoom(`group__${grp.id}`, grp.name, null, false, null, true, grp);
+            highlightContact(`group__${grp.id}`);
+            mobileChatOpen();
+        });
+    });
+}
+
+groupsNavItem?.addEventListener("click", e => {
+    e.preventDefault();
+    groupsPanel?.classList.contains("open") ? closeGroupsPanel() : openGroupsPanel();
+});
+groupsPanelClose?.addEventListener("click", closeGroupsPanel);
+groupsPanelOverlay?.addEventListener("click", closeGroupsPanel);
+
+// ─── Create Group Modal ───────────────────────────────────────────────────
+createGroupBtn?.addEventListener("click", () => {
+    closeGroupsPanel();
+    openCreateGroupModal();
+});
+
+function openCreateGroupModal() {
+    groupSelectedMembers.clear();
+    selectedGroupIcon = "💬";
+    if (groupNameInput) groupNameInput.value = "";
+    if (groupDescInput) groupDescInput.value = "";
+    renderSelectedMembersChips();
+    renderGroupMemberPicker("");
+    // Reset icon picker
+    groupIconPicker?.querySelectorAll(".gip-item").forEach(el => {
+        el.classList.toggle("active", el.dataset.icon === "💬");
+    });
+    createGroupModal?.classList.remove("hidden");
+    groupNameInput?.focus();
+}
+
+createGroupModalClose?.addEventListener("click", () => createGroupModal?.classList.add("hidden"));
+createGroupCancel?.addEventListener("click", () => createGroupModal?.classList.add("hidden"));
+createGroupModal?.addEventListener("click", e => { if (e.target === createGroupModal) createGroupModal.classList.add("hidden"); });
+
+// Icon picker
+groupIconPicker?.addEventListener("click", e => {
+    const item = e.target.closest(".gip-item");
+    if (!item) return;
+    selectedGroupIcon = item.dataset.icon;
+    groupIconPicker.querySelectorAll(".gip-item").forEach(el => el.classList.toggle("active", el === item));
+});
+
+// Member search in create modal
+groupMemberSearch?.addEventListener("input", () => {
+    renderGroupMemberPicker(groupMemberSearch.value.toLowerCase());
+});
+
+function renderGroupMemberPicker(q) {
+    if (!groupMemberList) return;
+    const users = allPresenceUsers.filter(u =>
+        u.uid !== ME?.uid &&
+        !groupSelectedMembers.has(u.uid) &&
+        (!q || u.name.toLowerCase().includes(q))
+    );
+    if (!users.length) {
+        groupMemberList.innerHTML = `<li class="modal-empty">${q ? "No users found" : "No other users available"}</li>`;
+        return;
+    }
+    groupMemberList.innerHTML = users.map(u => {
+        const color = colorFor(u.name);
+        const av = u.avatar
+            ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+            : u.name.charAt(0).toUpperCase();
+        return `
+        <li class="modal-user-item" data-uid="${u.uid}">
+            <div class="modal-user-av" style="background:${color};">
+                ${av}
+                <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+            </div>
+            <div class="modal-user-info">
+                <div class="modal-user-name">${escHtml(u.name)}</div>
+                <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+            </div>
+            <div class="modal-check"><i class="ri-check-line"></i></div>
+        </li>`;
+    }).join("");
+
+    groupMemberList.querySelectorAll(".modal-user-item").forEach(el => {
+        el.addEventListener("click", () => {
+            const uid = el.dataset.uid;
+            const user = allPresenceUsers.find(u => u.uid === uid);
+            if (!user) return;
+            groupSelectedMembers.set(uid, user);
+            renderSelectedMembersChips();
+            renderGroupMemberPicker(groupMemberSearch?.value.toLowerCase() || "");
+        });
+    });
+}
+
+function renderSelectedMembersChips() {
+    if (!selectedMembersWrap) return;
+    selectedMembersWrap.innerHTML = [...groupSelectedMembers.values()].map(u => {
+        const color = colorFor(u.name);
+        const av = u.avatar
+            ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
+            : u.name.charAt(0).toUpperCase();
+        return `
+        <div class="member-chip" data-uid="${u.uid}">
+            <div class="chip-av" style="background:${color};">${av}</div>
+            <span>${escHtml(u.name)}</span>
+            <span class="chip-remove" title="Remove">✕</span>
+        </div>`;
+    }).join("");
+
+    selectedMembersWrap.querySelectorAll(".member-chip").forEach(el => {
+        el.querySelector(".chip-remove")?.addEventListener("click", () => {
+            groupSelectedMembers.delete(el.dataset.uid);
+            renderSelectedMembersChips();
+            renderGroupMemberPicker(groupMemberSearch?.value.toLowerCase() || "");
+        });
+    });
+}
+
+createGroupSave?.addEventListener("click", async () => {
+    const name = groupNameInput?.value.trim();
+    if (!name) { showToast("Please enter a group name", "warning"); return; }
+    if (groupSelectedMembers.size < 1) { showToast("Add at least 1 member to the group", "warning"); return; }
+
+    const members = [ME.uid, ...groupSelectedMembers.keys()];
+    try {
+        createGroupSave.disabled = true;
+        const ref = await addDoc(collection(db, "groups"), {
+            name,
+            desc: groupDescInput?.value.trim() || "",
+            icon: selectedGroupIcon,
+            adminUid: ME.uid,
+            members,
+            createdAt: serverTimestamp()
+        });
+        showToast(`Group "${name}" created! 🎉`, "success");
+        createGroupModal?.classList.add("hidden");
+        // Auto-open the new group
+        const newGroup = { id: ref.id, name, desc: groupDescInput?.value.trim() || "", icon: selectedGroupIcon, adminUid: ME.uid, members };
+        openRoom(`group__${ref.id}`, name, null, false, null, true, newGroup);
+        mobileChatOpen();
+    } catch (err) {
+        showToast("Failed to create group: " + err.message, "error");
+    } finally {
+        if (createGroupSave) createGroupSave.disabled = false;
+    }
+});
+
+// ─── Group Settings Modal (admin only) ───────────────────────────────────
+groupSettingsBtn?.addEventListener("click", () => openGroupSettingsModal());
+
+function openGroupSettingsModal() {
+    const grp = activeRoomMeta.groupData;
+    if (!grp) return;
+    gsGroupName.value = grp.name || "";
+    renderGsMembers(grp);
+    renderGsAddMembers("");
+    groupSettingsModal?.classList.remove("hidden");
+}
+
+function renderGsMembers(grp) {
+    if (!gsGroupMembersList) return;
+    const members = grp.members || [];
+    if (!members.length) { gsGroupMembersList.innerHTML = `<li class="modal-empty">No members</li>`; return; }
+
+    gsGroupMembersList.innerHTML = members.map(uid => {
+        const u = allPresenceUsers.find(p => p.uid === uid) || { uid, name: uid, avatar: "", online: false };
+        const color = colorFor(u.name);
+        const av = u.avatar
+            ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+            : u.name.charAt(0).toUpperCase();
+        const isAdmin = uid === grp.adminUid;
+        const isSelf = uid === ME?.uid;
+        const canKick = !isAdmin && !isSelf; // admin can kick non-admin, non-self
+        return `
+        <li class="modal-user-item" data-uid="${uid}" style="cursor:default;">
+            <div class="modal-user-av" style="background:${color};">${av}<div class="modal-online-dot ${u.online ? "online" : "offline"}"></div></div>
+            <div class="modal-user-info">
+                <div class="modal-user-name">${escHtml(u.name)}${isAdmin ? ' <span style="font-size:10px;color:var(--primary);font-weight:700;">(Admin)</span>' : ""}</div>
+                <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+            </div>
+            ${canKick ? `<button class="icon-btn gs-kick-btn" data-uid="${uid}" title="Remove from group" style="color:var(--error);"><i class="ri-user-unfollow-line"></i></button>` : ""}
+        </li>`;
+    }).join("");
+
+    gsGroupMembersList.querySelectorAll(".gs-kick-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const uid = btn.dataset.uid;
+            const u = allPresenceUsers.find(p => p.uid === uid);
+            if (!confirm(`Remove ${u?.name || uid} from group?`)) return;
+            await kickMemberFromGroup(grp.id, uid);
+        });
+    });
+}
+
+function renderGsAddMembers(q) {
+    if (!gsAddMemberList) return;
+    const grp = activeRoomMeta.groupData;
+    if (!grp) return;
+    const existingMembers = new Set(grp.members || []);
+    const users = allPresenceUsers.filter(u =>
+        u.uid !== ME?.uid &&
+        !existingMembers.has(u.uid) &&
+        (!q || u.name.toLowerCase().includes(q))
+    );
+    if (!users.length) { gsAddMemberList.innerHTML = `<li class="modal-empty">No users to add</li>`; return; }
+    gsAddMemberList.innerHTML = users.map(u => {
+        const color = colorFor(u.name);
+        const av = u.avatar
+            ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+            : u.name.charAt(0).toUpperCase();
+        return `
+        <li class="modal-user-item" data-uid="${u.uid}">
+            <div class="modal-user-av" style="background:${color};">${av}<div class="modal-online-dot ${u.online ? "online" : "offline"}"></div></div>
+            <div class="modal-user-info">
+                <div class="modal-user-name">${escHtml(u.name)}</div>
+                <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+            </div>
+            <button class="icon-btn" style="color:var(--primary);"><i class="ri-user-add-line"></i></button>
+        </li>`;
+    }).join("");
+
+    gsAddMemberList.querySelectorAll(".modal-user-item").forEach(el => {
+        el.addEventListener("click", async () => {
+            const uid = el.dataset.uid;
+            const grp2 = activeRoomMeta.groupData;
+            if (!grp2) return;
+            const newMembers = [...(grp2.members || []), uid];
+            await updateDoc(doc(db, "groups", grp2.id), { members: newMembers });
+            // Update local
+            grp2.members = newMembers;
+            showToast("Member added!", "success");
+            renderGsMembers(grp2);
+            renderGsAddMembers(gsAddMemberSearch?.value.toLowerCase() || "");
+        });
+    });
+}
+
+gsAddMemberSearch?.addEventListener("input", () => {
+    renderGsAddMembers(gsAddMemberSearch.value.toLowerCase());
+});
+
+groupSettingsModalClose?.addEventListener("click", () => groupSettingsModal?.classList.add("hidden"));
+groupSettingsCancel?.addEventListener("click", () => groupSettingsModal?.classList.add("hidden"));
+groupSettingsModal?.addEventListener("click", e => { if (e.target === groupSettingsModal) groupSettingsModal.classList.add("hidden"); });
+
+groupSettingsSave?.addEventListener("click", async () => {
+    const grp = activeRoomMeta.groupData;
+    if (!grp) return;
+    const newName = gsGroupName?.value.trim();
+    if (!newName) { showToast("Group name cannot be empty", "warning"); return; }
+    await updateDoc(doc(db, "groups", grp.id), { name: newName });
+    chName.textContent = newName;
+    ipName.textContent = newName;
+    grp.name = newName;
+    showToast("Group updated!", "success");
+    groupSettingsModal?.classList.add("hidden");
+});
+
+gsDeleteGroup?.addEventListener("click", async () => {
+    const grp = activeRoomMeta.groupData;
+    if (!grp) return;
+    if (!confirm(`Delete group "${grp.name}"? This will remove all messages and cannot be undone.`)) return;
+    try {
+        // Delete all messages
+        const snap = await getDocs(collection(db, "rooms", `group__${grp.id}`, "messages"));
+        await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+        // Delete the group document
+        await deleteDoc(doc(db, "groups", grp.id));
+        groupSettingsModal?.classList.add("hidden");
+        activeRoomId = null;
+        chatView.classList.add("hidden");
+        chatEmpty.style.display = "";
+        mobileChatClose();
+        showToast("Group deleted", "success");
+    } catch (err) {
+        showToast("Failed to delete group: " + err.message, "error");
+    }
+});
+
+async function kickMemberFromGroup(groupId, uid) {
+    try {
+        const grpRef = doc(db, "groups", groupId);
+        const snap = await getDoc(grpRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const newMembers = (data.members || []).filter(m => m !== uid);
+        await updateDoc(grpRef, { members: newMembers });
+        // Update local
+        if (activeRoomMeta.groupData) activeRoomMeta.groupData.members = newMembers;
+        showToast("Member removed from group", "success");
+        renderGsMembers(activeRoomMeta.groupData);
+        renderGsAddMembers("");
+    } catch (err) {
+        showToast("Failed to remove member: " + err.message, "error");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CONTACTS LIST
 // ═══════════════════════════════════════════════════════════════════════════
 function renderContactsList() {
     pinnedList.innerHTML = "";
-    const pinnedOthers = allPresenceUsers.filter(u => u.uid !== ME?.uid && pinnedChats.has(u.uid));
 
-    const generalItem = document.createElement("li");
-    generalItem.innerHTML = buildChatItemHtml({
+    // General chat is always pinned
+    const generalLi = document.createElement("li");
+    generalLi.innerHTML = buildChatItemHtml({
         id: ROOM_GENERAL, name: "General Chat", avatar: "",
         preview: "Public room — everyone can chat",
         time: "", unread: 0, online: true, isPinned: true
     }, activeRoomId === ROOM_GENERAL);
-    pinnedList.appendChild(generalItem.firstElementChild);
-
+    pinnedList.appendChild(generalLi.firstElementChild);
     pinnedList.querySelector(".chat-item")?.addEventListener("click", () => {
-        openRoom(ROOM_GENERAL, "General Chat", null, true);
+        openRoom(ROOM_GENERAL, "General Chat", null, true, null, false);
         highlightContact(ROOM_GENERAL);
-        mobileChatOpen(); // ← responsive
+        mobileChatOpen();
     });
 
+    // Pinned DM users
+    const pinnedOthers = allPresenceUsers.filter(u => u.uid !== ME?.uid && pinnedChats.has(u.uid));
     pinnedOthers.forEach(u => {
         const li = document.createElement("li");
         li.innerHTML = buildChatItemHtml({
@@ -451,9 +903,9 @@ function renderContactsList() {
             pinnedList.appendChild(el);
             el.addEventListener("click", () => {
                 const roomId = getRoomId(ME.uid, u.uid);
-                openRoom(roomId, u.name, u.avatar, false, u);
+                openRoom(roomId, u.name, u.avatar, false, u, false);
                 highlightContact(u.uid);
-                mobileChatOpen(); // ← responsive
+                mobileChatOpen();
             });
         }
     });
@@ -489,11 +941,6 @@ function highlightContact(id) {
     document.querySelectorAll(".chat-item").forEach(el => {
         el.classList.toggle("active", el.dataset.id === id);
     });
-    if (id === ROOM_GENERAL) {
-        pinnedList.querySelector(".chat-item")?.classList.add("active");
-    } else {
-        pinnedList.querySelector(`.chat-item[data-id="${ROOM_GENERAL}"]`)?.classList.remove("active");
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -557,7 +1004,7 @@ function renderOnlinePanel(users) {
                 id: u.uid, name: u.name, avatar: u.avatar,
                 preview: u.status || "Say hello!",
                 time: "", unread: 0, online: u.online, isPinned
-            }, activeRoomId === getRoomId(ME.uid, u.uid));
+            }, activeRoomId === getRoomId(ME?.uid, u.uid));
         }).join("");
 
         allChatList.querySelectorAll(".chat-item").forEach(el => {
@@ -566,9 +1013,9 @@ function renderOnlinePanel(users) {
                 const user = allPresenceUsers.find(u => u.uid === uid);
                 if (!user) return;
                 const roomId = getRoomId(ME.uid, uid);
-                openRoom(roomId, user.name, user.avatar, false, user);
+                openRoom(roomId, user.name, user.avatar, false, user, false);
                 highlightContact(uid);
-                mobileChatOpen(); // ← responsive
+                mobileChatOpen();
             });
         });
     } else {
@@ -581,9 +1028,9 @@ function getRoomId(a, b) { return [a, b].sort().join("__"); }
 // ═══════════════════════════════════════════════════════════════════════════
 // OPEN ROOM
 // ═══════════════════════════════════════════════════════════════════════════
-function openRoom(roomId, name, avatar, isPublic, targetUser = null) {
+function openRoom(roomId, name, avatar, isPublic, targetUser = null, isGroup = false, groupData = null) {
     activeRoomId = roomId;
-    activeRoomMeta = { name, isPublic };
+    activeRoomMeta = { name, isPublic, isGroup, groupData };
 
     chatEmpty.style.display = "none";
     chatView.classList.remove("hidden");
@@ -598,18 +1045,40 @@ function openRoom(roomId, name, avatar, isPublic, targetUser = null) {
         chStatus.textContent = "Public Room · All users";
         chStatus.className = "ch-status";
         chPresence.className = "ch-presence online";
+    } else if (isGroup) {
+        const memberCount = groupData?.members?.length || 0;
+        chStatus.textContent = `${memberCount} members`;
+        chStatus.className = "ch-status";
+        chPresence.className = "ch-presence online";
+        // Show group settings button for admin
+        if (groupSettingsBtn) {
+            const isAdmin = groupData?.adminUid === ME?.uid;
+            groupSettingsBtn.classList.toggle("hidden", !isAdmin);
+        }
     } else {
         const isOnline = targetUser?.online ?? false;
         chStatus.textContent = isOnline ? "Online" : "Offline";
         chStatus.className = `ch-status ${isOnline ? "online-status" : "offline-status"}`;
         chPresence.className = `ch-presence ${isOnline ? "online" : "offline"}`;
+        if (groupSettingsBtn) groupSettingsBtn.classList.add("hidden");
     }
+
+    // Hide group settings btn for non-group rooms
+    if (!isGroup && groupSettingsBtn) groupSettingsBtn.classList.add("hidden");
 
     buildAvatarEl(ipAvatar, name, avatar || "");
     ipAvatar.style.width = "72px";
     ipAvatar.style.height = "72px";
     ipName.textContent = name;
-    ipStatus.textContent = isPublic ? "Public room" : (targetUser?.status || "");
+    ipStatus.textContent = isGroup
+        ? `Group · ${groupData?.members?.length || 0} members`
+        : isPublic ? "Public room" : (targetUser?.status || "");
+
+    // Show/hide group members section in info panel
+    if (ipGroupMembersSection) {
+        ipGroupMembersSection.classList.toggle("hidden", !isGroup);
+        if (isGroup && groupData) renderGroupMembersPanel(groupData);
+    }
 
     if (msgUnsub) msgUnsub();
     if (typingUnsub) typingUnsub();
@@ -622,6 +1091,45 @@ function openRoom(roomId, name, avatar, isPublic, targetUser = null) {
 
     listenMessages(roomId);
     listenTyping(roomId);
+}
+
+function renderGroupMembersPanel(grp) {
+    if (!ipGroupMembersList) return;
+    const members = grp.members || [];
+    const isAdmin = grp.adminUid === ME?.uid;
+    ipGroupMembersList.innerHTML = members.map(uid => {
+        const u = allPresenceUsers.find(p => p.uid === uid) || { uid, name: uid, avatar: "", online: false };
+        const color = colorFor(u.name);
+        const av = u.avatar
+            ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
+            : u.name.charAt(0).toUpperCase();
+        const memberIsAdmin = uid === grp.adminUid;
+        const canKick = isAdmin && !memberIsAdmin && uid !== ME?.uid;
+        return `
+        <li>
+          <div class="ip-member-row">
+            <div class="ip-user-av-wrap">
+              <div class="ip-user-av" style="background:${color};">${av}</div>
+              ${u.online ? `<div class="ip-user-dot"></div>` : ""}
+            </div>
+            <div>
+              <div class="ip-user-name">${escHtml(u.name)} ${memberIsAdmin ? '👑' : ""}</div>
+              <div class="ip-user-label">${u.online ? "Online" : "Offline"}</div>
+            </div>
+            ${canKick ? `<button class="ip-member-kick" data-uid="${uid}" title="Remove from group"><i class="ri-user-unfollow-line"></i></button>` : ""}
+          </div>
+        </li>`;
+    }).join("");
+
+    ipGroupMembersList.querySelectorAll(".ip-member-kick").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const uid = btn.dataset.uid;
+            const u = allPresenceUsers.find(p => p.uid === uid);
+            if (!confirm(`Remove ${u?.name || uid} from group?`)) return;
+            await kickMemberFromGroup(grp.id, uid);
+            renderGroupMembersPanel(grp);
+        });
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -640,7 +1148,7 @@ function closeMoreDropdown() {
 
 moreMenuBtn.addEventListener("click", e => {
     e.stopPropagation();
-    if (moreDropdownOpen) { closeMoreDropdown(); }
+    if (moreDropdownOpen) closeMoreDropdown();
     else { closeEmojiPanel(); closeAttachMenu(); openMoreDropdown(); }
 });
 moreDropdown.addEventListener("click", e => e.stopPropagation());
@@ -697,7 +1205,7 @@ mdDeleteChat.addEventListener("click", async () => {
         activeRoomId = null;
         chatView.classList.add("hidden");
         chatEmpty.style.display = "";
-        mobileChatClose(); // ← responsive: go back to contacts on mobile
+        mobileChatClose();
         renderContactsList();
         showToast("Chat deleted", "success");
     } catch { showToast("Failed to delete chat", "error"); }
@@ -1071,8 +1579,12 @@ function listenTyping(roomId) {
             if (activeRoomMeta.isPublic) {
                 chStatus.textContent = "Public Room · All users";
                 chStatus.className = "ch-status";
+            } else if (activeRoomMeta.isGroup) {
+                const memberCount = activeRoomMeta.groupData?.members?.length || 0;
+                chStatus.textContent = `${memberCount} members`;
+                chStatus.className = "ch-status";
             } else {
-                const other = allPresenceUsers.find(u => u.uid !== ME.uid && getRoomId(ME.uid, u.uid) === activeRoomId);
+                const other = allPresenceUsers.find(u => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId);
                 if (other) {
                     chStatus.textContent = other.online ? "Online" : "Offline";
                     chStatus.className = `ch-status ${other.online ? "online-status" : "offline-status"}`;
@@ -1174,6 +1686,9 @@ async function runContactSearch(q) {
     allPresenceUsers.filter(u => u.uid !== ME.uid).forEach(u => {
         roomsToSearch.push({ roomId: getRoomId(ME.uid, u.uid), name: u.name });
     });
+    allGroups.forEach(g => {
+        roomsToSearch.push({ roomId: `group__${g.id}`, name: g.name });
+    });
 
     for (const room of roomsToSearch) {
         try {
@@ -1213,9 +1728,11 @@ async function runContactSearch(q) {
             if (!room) return;
             const targetUser = allPresenceUsers.find(u => getRoomId(ME.uid, u.uid) === roomId);
             const isPublic = roomId === ROOM_GENERAL;
-            openRoom(roomId, room.name, targetUser?.avatar || null, isPublic, targetUser || null);
+            const isGroup = roomId.startsWith("group__");
+            const grpData = isGroup ? allGroups.find(g => `group__${g.id}` === roomId) : null;
+            openRoom(roomId, room.name, targetUser?.avatar || null, isPublic, targetUser || null, isGroup, grpData);
             highlightContact(targetUser?.uid || ROOM_GENERAL);
-            mobileChatOpen(); // ← responsive
+            mobileChatOpen();
             searchInput.value = "";
             searchResultsList.classList.add("hidden");
             normalChatLists.classList.remove("hidden");
@@ -1345,9 +1862,9 @@ function renderNewChatList(users) {
             const user = allPresenceUsers.find(u => u.uid === uid);
             if (!user) return;
             const roomId = getRoomId(ME.uid, uid);
-            openRoom(roomId, user.name, user.avatar, false, user);
+            openRoom(roomId, user.name, user.avatar, false, user, false);
             highlightContact(uid);
-            mobileChatOpen(); // ← responsive
+            mobileChatOpen();
             newChatModal.classList.add("hidden");
         });
     });
@@ -1384,3 +1901,6 @@ function scrollBottom() { requestAnimationFrame(() => { messagesArea.scrollTop =
 window.copyRoomLink = function () {
     navigator.clipboard.writeText(window.location.href).then(() => showToast("Room link copied!", "success"));
 };
+
+// Start presence heartbeat once auth is done (called from init)
+startPresenceHeartbeat();
