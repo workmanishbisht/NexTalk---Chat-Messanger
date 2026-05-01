@@ -158,10 +158,10 @@ continueBtn.addEventListener("click", () => {
     };
 
     saveProfile(user.uid, profile);
-    showToast("Profile saved! Taking you in 🎉", "success");
+    showToast("Profile saved! Taking you in", "success");
 
     setTimeout(() => {
-        window.location.href = "./dashboard.html";
+        window.location.href = "./chatdashboard.html";
     }, 1300);
 });
 
@@ -184,6 +184,6 @@ skipBtn.addEventListener("click", () => {
     showToast("Skipped! You can update your profile later.", "warning");
 
     setTimeout(() => {
-        window.location.href = "./dashboard.html";
+        window.location.href = "./chatdashboard.html";
     }, 1300);
 });
