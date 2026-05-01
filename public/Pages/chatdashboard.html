@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NexTalk - Chat Messanger</title>
+    <title>NexTalk - Chat Messenger</title>
     <link rel="icon" type="image/png" href="../Assets/FavIcon/favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/chatdashboard.css">
@@ -12,7 +12,7 @@
 
 <body>
 
-    <!-- MOBILE TOP BAR (visible only on small screens) -->
+    <!-- MOBILE TOP BAR -->
     <div class="mobile-topbar" id="mobileTopbar">
         <button class="icon-btn mobile-menu-btn" id="mobileMenuBtn" title="Menu">
             <i class="ri-menu-line"></i>
@@ -26,47 +26,88 @@
     <!-- SIDEBAR OVERLAY (mobile) -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+    <!-- GROUPS PANEL -->
+    <div class="groups-panel" id="groupsPanel">
+        <div class="groups-panel-header">
+            <div class="groups-panel-title">
+                <i class="ri-team-line"></i> Groups
+            </div>
+            <button class="icon-btn" id="createGroupBtn" title="Create Group"
+                style="margin-left:auto;margin-right:4px;">
+                <i class="ri-add-line"></i>
+            </button>
+            <button class="icon-btn" id="groupsPanelClose" title="Close">
+                <i class="ri-close-line"></i>
+            </button>
+        </div>
+        <ul class="groups-list" id="groupsList">
+            <!-- Populated by JS -->
+        </ul>
+    </div>
+    <div class="groups-panel-overlay" id="groupsPanelOverlay"></div>
+
     <!-- SIDEBAR NAV -->
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-logo">
-            <img src="./public/Assets/Logo/logo.png" alt="NexTalk" class="logo-img"
+            <img src="../Assets/FavIcon/favicon.png" alt="NexTalk" class="logo-img"
                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
             <span class="logo-fallback">NT</span>
         </div>
 
-        <!-- Mobile close button -->
         <button class="sidebar-close-btn" id="sidebarCloseBtn">
             <i class="ri-close-line"></i>
         </button>
 
         <ul class="nav-links">
             <li class="nav-item tooltip-wrap active" data-tip="Dashboard">
-                <a href="#"><i class="ri-dashboard-line"></i></a>
+                <a href="#">
+                    <i class="ri-dashboard-line"></i>
+                    <span class="nav-label">Home</span>
+                </a>
             </li>
             <li class="nav-item tooltip-wrap" data-tip="Messages">
-                <a href="#"><i class="ri-message-3-line"></i></a>
+                <a href="#">
+                    <i class="ri-message-3-line"></i>
+                    <span class="nav-label">Chats</span>
+                </a>
                 <span class="nav-badge" id="totalUnread">0</span>
             </li>
-            <li class="nav-item tooltip-wrap" data-tip="Groups">
-                <a href="#"><i class="ri-team-line"></i></a>
+            <li class="nav-item tooltip-wrap group-nav-item" data-tip="Groups" id="groupsNavItem">
+                <a href="#">
+                    <i class="ri-team-line"></i>
+                    <span class="nav-label">Groups</span>
+                </a>
             </li>
             <li class="nav-item tooltip-wrap" data-tip="Favourites">
-                <a href="#"><i class="ri-star-line"></i></a>
+                <a href="#">
+                    <i class="ri-star-line"></i>
+                    <span class="nav-label">Saved</span>
+                </a>
             </li>
             <li class="nav-item tooltip-wrap" data-tip="Calendar">
-                <a href="#"><i class="ri-calendar-line"></i></a>
+                <a href="#">
+                    <i class="ri-calendar-line"></i>
+                    <span class="nav-label">Events</span>
+                </a>
             </li>
             <li class="nav-item tooltip-wrap" data-tip="Files">
-                <a href="#"><i class="ri-folder-line"></i></a>
+                <a href="#">
+                    <i class="ri-folder-line"></i>
+                    <span class="nav-label">Files</span>
+                </a>
             </li>
         </ul>
 
+        <!-- FIX 1: Sidebar footer restructured for mobile visibility -->
         <div class="sidebar-footer">
             <button class="sidebar-icon-btn tooltip-wrap" data-tip="Toggle Theme" id="themeToggleBtn">
                 <i class="ri-moon-line" id="themeIcon"></i>
             </button>
-            <div class="nav-item tooltip-wrap" data-tip="Settings">
-                <a href="#"><i class="ri-settings-3-line"></i></a>
+            <div class="nav-item tooltip-wrap sidebar-settings-item" data-tip="Settings">
+                <a href="#">
+                    <i class="ri-settings-3-line"></i>
+                    <span class="nav-label">Settings</span>
+                </a>
             </div>
             <div class="sidebar-avatar-wrap tooltip-wrap" data-tip="My Profile" id="avatarWrap">
                 <div class="sidebar-avatar" id="sidebarAvatar"></div>
@@ -90,7 +131,6 @@
                 <button class="icon-btn" id="newChatBtn" title="New Chat">
                     <i class="ri-edit-line"></i>
                 </button>
-                <!-- Back button for mobile (chat view → contacts) -->
                 <button class="icon-btn contacts-back-btn hidden" id="contactsBackBtn" title="Back">
                     <i class="ri-arrow-left-line"></i>
                 </button>
@@ -117,8 +157,6 @@
 
     <!-- MAIN CHAT AREA -->
     <main class="chat-main" id="chatMain">
-
-        <!-- Empty state -->
         <div class="chat-empty" id="chatEmpty">
             <div class="chat-empty-inner">
                 <div class="empty-icon"><i class="ri-chat-smile-3-line"></i></div>
@@ -127,13 +165,9 @@
             </div>
         </div>
 
-        <!-- Active conversation view -->
         <div class="chat-view hidden" id="chatView">
-
-            <!-- Chat Header -->
             <header class="chat-header">
                 <div class="ch-left">
-                    <!-- Back button for mobile -->
                     <button class="icon-btn chat-back-btn" id="chatBackBtn" title="Back">
                         <i class="ri-arrow-left-line"></i>
                     </button>
@@ -151,51 +185,39 @@
                             class="ri-search-line"></i></button>
                     <button class="icon-btn ch-action-hide-sm"><i class="ri-phone-line"></i></button>
                     <button class="icon-btn ch-action-hide-sm"><i class="ri-vidicon-line"></i></button>
-
-                    <!-- Info panel toggle (mobile) -->
                     <button class="icon-btn info-panel-toggle-btn" id="infoPanelToggleBtn" title="Info">
                         <i class="ri-information-line"></i>
                     </button>
-
-                    <!-- ── 3-DOT MORE MENU ── -->
+                    <!-- Group admin actions (shown only in group rooms for admin) -->
+                    <button class="icon-btn hidden" id="groupSettingsBtn" title="Group Settings">
+                        <i class="ri-settings-3-line"></i>
+                    </button>
                     <div class="more-menu-wrap">
                         <button class="icon-btn" id="moreMenuBtn" title="More Options">
                             <i class="ri-more-2-fill"></i>
                         </button>
                         <div class="more-dropdown hidden" id="moreDropdown">
-                            <button class="more-item" id="mdSearch">
-                                <i class="ri-search-line"></i> Search
-                            </button>
+                            <button class="more-item" id="mdSearch"><i class="ri-search-line"></i> Search</button>
                             <div class="more-divider"></div>
-                            <button class="more-item" id="mdSelectMsg">
-                                <i class="ri-chat-check-line"></i> Select Message
-                            </button>
-                            <button class="more-item" id="mdPinChat">
-                                <i class="ri-pushpin-line"></i> Pin Chat
-                            </button>
-                            <button class="more-item" id="mdEditNick">
-                                <i class="ri-edit-line"></i> Edit Nickname
-                            </button>
+                            <button class="more-item" id="mdSelectMsg"><i class="ri-chat-check-line"></i> Select
+                                Message</button>
+                            <button class="more-item" id="mdPinChat"><i class="ri-pushpin-line"></i> Pin Chat</button>
+                            <button class="more-item" id="mdEditNick"><i class="ri-edit-line"></i> Edit
+                                Nickname</button>
                             <div class="more-divider"></div>
-                            <button class="more-item" id="mdClearChat">
-                                <i class="ri-brush-line"></i> Clear Chat
-                            </button>
-                            <button class="more-item more-item-danger" id="mdDeleteChat">
-                                <i class="ri-delete-bin-line"></i> Delete Chat
-                            </button>
-                            <button class="more-item more-item-danger" id="mdBlock">
-                                <i class="ri-forbid-line"></i> Block
-                            </button>
+                            <button class="more-item" id="mdClearChat"><i class="ri-brush-line"></i> Clear Chat</button>
+                            <button class="more-item more-item-danger" id="mdDeleteChat"><i
+                                    class="ri-delete-bin-line"></i> Delete Chat</button>
+                            <button class="more-item more-item-danger" id="mdBlock"><i class="ri-forbid-line"></i>
+                                Block</button>
                             <div class="more-divider"></div>
-                            <button class="more-item more-item-fav" id="mdAddFav">
-                                <i class="ri-star-line"></i> Add to Fav
-                            </button>
+                            <button class="more-item more-item-fav" id="mdAddFav"><i class="ri-star-line"></i> Add to
+                                Fav</button>
                         </div>
                     </div>
                 </div>
             </header>
 
-            <!-- In-chat search bar -->
             <div class="chat-search-bar hidden" id="chatSearchBar">
                 <i class="ri-search-line"></i>
                 <input type="text" id="chatSearchInput" placeholder="Search in this conversation…" />
@@ -205,16 +227,13 @@
                 <button class="icon-btn" id="chatSearchClose"><i class="ri-close-line"></i></button>
             </div>
 
-            <!-- Messages -->
             <div class="messages-area" id="messagesArea"></div>
 
-            <!-- Typing indicator -->
             <div class="typing-row hidden" id="typingRow">
                 <div class="typing-av" id="typingAv"></div>
                 <div class="typing-bubble"><span></span><span></span><span></span></div>
             </div>
 
-            <!-- Emoji / Sticker Panel -->
             <div class="emoji-panel hidden" id="emojiPanel">
                 <div class="emoji-tabs">
                     <button class="etab active" data-tab="emoji">😊 Emoji</button>
@@ -224,7 +243,6 @@
                 <div class="emoji-content" id="emojiContent"></div>
             </div>
 
-            <!-- Input Bar -->
             <div class="input-bar">
                 <div class="attach-wrap">
                     <button class="icon-btn attach-btn" id="attachBtn" title="Attach">
@@ -258,17 +276,14 @@
                     <i class="ri-send-plane-fill"></i>
                 </button>
             </div>
-
         </div>
     </main>
 
     <!-- RIGHT INFO PANEL -->
     <aside class="info-panel" id="infoPanel">
-        <!-- Mobile close button -->
         <button class="info-panel-close-btn" id="infoPanelCloseBtn">
             <i class="ri-close-line"></i>
         </button>
-
         <div class="ip-profile-card" id="ipProfileCard">
             <div class="ip-avatar" id="ipAvatar"></div>
             <div class="ip-name" id="ipName">—</div>
@@ -278,6 +293,11 @@
                 <button class="icon-btn"><i class="ri-vidicon-line"></i></button>
                 <button class="icon-btn"><i class="ri-user-add-line"></i></button>
             </div>
+        </div>
+        <!-- Group members section (shown for group rooms) -->
+        <div class="ip-section hidden" id="ipGroupMembersSection">
+            <div class="ip-section-label">Group Members</div>
+            <ul class="ip-online-list" id="ipGroupMembersList"></ul>
         </div>
         <div class="ip-section">
             <div class="ip-section-label">Online Now</div>
@@ -305,7 +325,6 @@
         </div>
     </aside>
 
-    <!-- INFO PANEL OVERLAY (mobile) -->
     <div class="info-panel-overlay" id="infoPanelOverlay"></div>
 
     <!-- NEW CHAT MODAL -->
@@ -322,6 +341,116 @@
             <ul class="modal-user-list" id="newChatUserList">
                 <li class="modal-empty">Loading users…</li>
             </ul>
+        </div>
+    </div>
+
+    <!-- CREATE GROUP MODAL -->
+    <div class="modal-overlay hidden" id="createGroupModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="ri-team-line"></i> Create Group</h3>
+                <button class="icon-btn" id="createGroupModalClose"><i class="ri-close-line"></i></button>
+            </div>
+            <div style="padding: 16px 18px; display:flex; flex-direction:column; gap:12px;">
+                <!-- Group name -->
+                <div>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group
+                        Name *</label>
+                    <input type="text" id="groupNameInput" placeholder="Enter group name…" class="nick-input"
+                        maxlength="60" />
+                </div>
+                <!-- Group description -->
+                <div>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Description</label>
+                    <input type="text" id="groupDescInput" placeholder="Short description (optional)…"
+                        class="nick-input" maxlength="100" />
+                </div>
+                <!-- Group icon -->
+                <div>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Icon</label>
+                    <div class="group-icon-picker" id="groupIconPicker">
+                        <span class="gip-item active" data-icon="💬">💬</span>
+                        <span class="gip-item" data-icon="🎮">🎮</span>
+                        <span class="gip-item" data-icon="🎵">🎵</span>
+                        <span class="gip-item" data-icon="📚">📚</span>
+                        <span class="gip-item" data-icon="🏀">🏀</span>
+                        <span class="gip-item" data-icon="💼">💼</span>
+                        <span class="gip-item" data-icon="🔬">🔬</span>
+                        <span class="gip-item" data-icon="🎨">🎨</span>
+                        <span class="gip-item" data-icon="🍕">🍕</span>
+                        <span class="gip-item" data-icon="✈️">✈️</span>
+                        <span class="gip-item" data-icon="🌍">🌍</span>
+                        <span class="gip-item" data-icon="🔥">🔥</span>
+                    </div>
+                </div>
+                <!-- Add members -->
+                <div>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add
+                        Members</label>
+                    <div class="modal-search-wrap" style="margin:0 0 8px;">
+                        <i class="ri-search-line"></i>
+                        <input type="text" id="groupMemberSearch" placeholder="Search users to add…"
+                            autocomplete="off" />
+                    </div>
+                    <!-- Selected members chips -->
+                    <div class="selected-members-wrap" id="selectedMembersWrap"></div>
+                    <!-- User list -->
+                    <ul class="modal-user-list group-member-list" id="groupMemberList" style="max-height:180px;"></ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="createGroupCancel">Cancel</button>
+                <button class="btn-primary" id="createGroupSave"><i class="ri-team-line"></i> Create Group</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GROUP SETTINGS MODAL (admin only) -->
+    <div class="modal-overlay hidden" id="groupSettingsModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="ri-settings-3-line"></i> Group Settings</h3>
+                <button class="icon-btn" id="groupSettingsModalClose"><i class="ri-close-line"></i></button>
+            </div>
+            <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
+                <div>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group
+                        Name</label>
+                    <input type="text" id="gsGroupName" class="nick-input" placeholder="Group name…" />
+                </div>
+                <div>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Members</label>
+                    <ul class="modal-user-list" id="gsGroupMembersList"
+                        style="max-height:220px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;">
+                    </ul>
+                </div>
+                <div>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add
+                        More Members</label>
+                    <div class="modal-search-wrap" style="margin:0 0 6px;">
+                        <i class="ri-search-line"></i>
+                        <input type="text" id="gsAddMemberSearch" placeholder="Search users…" />
+                    </div>
+                    <ul class="modal-user-list" id="gsAddMemberList"
+                        style="max-height:140px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;">
+                    </ul>
+                </div>
+                <button class="btn-secondary" id="gsDeleteGroup"
+                    style="color:var(--error);border-color:var(--error);margin-top:4px;">
+                    <i class="ri-delete-bin-line"></i> Delete Group
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="groupSettingsCancel">Cancel</button>
+                <button class="btn-primary" id="groupSettingsSave">Save Changes</button>
+            </div>
         </div>
     </div>
 
@@ -346,7 +475,7 @@
         </div>
     </div>
 
-    <!-- ── EDIT NICKNAME MODAL ── -->
+    <!-- EDIT NICKNAME MODAL -->
     <div class="modal-overlay hidden" id="editNickModal">
         <div class="modal-box modal-sm">
             <div class="modal-header">
@@ -363,7 +492,7 @@
         </div>
     </div>
 
-    <!-- ── SELECT MESSAGES BOTTOM BAR ── -->
+    <!-- SELECT MESSAGES BOTTOM BAR -->
     <div class="select-bar hidden" id="selectBar">
         <button class="icon-btn select-bar-btn" id="selectCancel" title="Cancel">
             <i class="ri-close-line"></i>
@@ -379,12 +508,10 @@
         </div>
     </div>
 
-    <!-- Toast -->
     <div id="toastContainer"></div>
 
-    <!-- Firebase + App JS -->
+     <!-- script file here -->
     <script type="module" src="../javascript/chatdashboard.js"></script>
-
 </body>
 
 </html>
