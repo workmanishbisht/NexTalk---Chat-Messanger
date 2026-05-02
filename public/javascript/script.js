@@ -127,8 +127,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const heroImg = document.getElementById("heroImg");
 
     const images = [
-        "./public/Assets/Hero/hero.png",
-        "./public/Assets/Hero/hero-01.png",
+        "./Assets/Hero/hero.png",
+        "./Assets/Hero/hero-01.png",
     ];
 
     let currentIndex = 0;
