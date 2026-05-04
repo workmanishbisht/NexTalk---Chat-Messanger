@@ -1,10 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // chatdashboard.js — NexTalk
 // FIXES:
-//   1. Two-sided chat: sent messages right, received left
-//   2. Chats nav icon shows all chat profiles panel
-//   3. Mobile sidebar footer matches screenshot design
-//   4. Presence heartbeat accuracy
+//   1. Theme toggle: dynamic label text (Light/Dark) shown on mobile
+//   2. Mobile chat: input bar always visible (flex layout fix)
+//   3. Mobile sidebar footer: profile card with name + email + chevron
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -94,297 +93,29 @@ function colorFor(str) {
 
 // ─── Emoji & Sticker Data ─────────────────────────────────────────────────────
 const EMOJIS = [
-  "😀",
-  "😃",
-  "😄",
-  "😁",
-  "😆",
-  "😅",
-  "🤣",
-  "😂",
-  "🙂",
-  "🙃",
-  "😉",
-  "😊",
-  "😇",
-  "🥰",
-  "😍",
-  "🤩",
-  "😘",
-  "😗",
-  "😚",
-  "😙",
-  "🥲",
-  "😋",
-  "😛",
-  "😜",
-  "🤪",
-  "😝",
-  "🤑",
-  "🤗",
-  "🤭",
-  "🤫",
-  "🤔",
-  "🤐",
-  "🤨",
-  "😐",
-  "😑",
-  "😶",
-  "😏",
-  "😒",
-  "🙄",
-  "😬",
-  "🤥",
-  "😌",
-  "😔",
-  "😪",
-  "🤤",
-  "😴",
-  "😷",
-  "🤒",
-  "🤕",
-  "🤢",
-  "🤮",
-  "🤧",
-  "🥵",
-  "🥶",
-  "🥴",
-  "😵",
-  "🤯",
-  "🤠",
-  "🥳",
-  "🥸",
-  "😎",
-  "🤓",
-  "🧐",
-  "😕",
-  "😟",
-  "🙁",
-  "☹️",
-  "😮",
-  "😯",
-  "😲",
-  "😳",
-  "🥺",
-  "😦",
-  "😧",
-  "😨",
-  "😰",
-  "😥",
-  "😢",
-  "😭",
-  "😱",
-  "😖",
-  "😣",
-  "😞",
-  "😓",
-  "😩",
-  "😫",
-  "🥱",
-  "😤",
-  "😡",
-  "😠",
-  "🤬",
-  "😈",
-  "👿",
-  "💀",
-  "☠️",
-  "💩",
-  "🤡",
-  "👹",
-  "👺",
-  "👻",
-  "👽",
-  "👾",
-  "🤖",
-  "😺",
-  "😸",
-  "😹",
-  "😻",
-  "😼",
-  "😽",
-  "🙀",
-  "😿",
-  "😾",
-  "👋",
-  "🤚",
-  "🖐",
-  "✋",
-  "🖖",
-  "👌",
-  "🤌",
-  "🤏",
-  "✌️",
-  "🤞",
-  "🤟",
-  "🤘",
-  "🤙",
-  "👈",
-  "👉",
-  "👆",
-  "👇",
-  "☝️",
-  "👍",
-  "👎",
-  "✊",
-  "👊",
-  "🤛",
-  "🤜",
-  "👏",
-  "🙌",
-  "🫶",
-  "👐",
-  "🤲",
-  "🤝",
-  "🙏",
-  "💪",
-  "❤️",
-  "🧡",
-  "💛",
-  "💚",
-  "💙",
-  "💜",
-  "🖤",
-  "🤍",
-  "🤎",
-  "💔",
-  "❣️",
-  "💕",
-  "💞",
-  "💓",
-  "💗",
-  "💖",
-  "💘",
-  "💝",
-  "💟",
-  "☮️",
-  "✝️",
-  "☯️",
-  "🔥",
-  "⚡",
-  "🌈",
-  "⭐",
-  "🌟",
-  "💫",
-  "✨",
-  "🎉",
-  "🎊",
-  "🎈",
+  "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍",
+  "🤩", "😘", "😗", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫",
+  "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥", "😌", "😔", "😪", "🤤",
+  "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "🥸",
+  "😎", "🤓", "🧐", "😕", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨",
+  "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠",
+  "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡", "👹", "👺", "👻", "👽", "👾", "🤖", "😺", "😸",
+  "😹", "😻", "😼", "😽", "🙀", "😿", "😾", "👋", "🤚", "🖐", "✋", "🖖", "👌", "🤌", "🤏",
+  "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛",
+  "🤜", "👏", "🙌", "🫶", "👐", "🤲", "🤝", "🙏", "💪", "❤️", "🧡", "💛", "💚", "💙", "💜",
+  "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "☮️", "✝️",
+  "☯️", "🔥", "⚡", "🌈", "⭐", "🌟", "💫", "✨", "🎉", "🎊", "🎈",
 ];
 
 const STICKERS = [
-  "🐶",
-  "🐱",
-  "🐭",
-  "🐹",
-  "🐰",
-  "🦊",
-  "🐻",
-  "🐼",
-  "🐨",
-  "🐯",
-  "🦁",
-  "🐮",
-  "🐷",
-  "🐸",
-  "🐵",
-  "🙈",
-  "🙉",
-  "🙊",
-  "🐔",
-  "🐧",
-  "🐦",
-  "🐤",
-  "🦆",
-  "🦅",
-  "🦉",
-  "🦇",
-  "🐺",
-  "🐗",
-  "🐴",
-  "🦄",
-  "🐝",
-  "🐛",
-  "🦋",
-  "🐌",
-  "🐞",
-  "🐜",
-  "🦟",
-  "🦗",
-  "🕷",
-  "🦂",
-  "🐢",
-  "🐍",
-  "🦎",
-  "🦖",
-  "🦕",
-  "🐙",
-  "🦑",
-  "🦐",
-  "🦞",
-  "🦀",
-  "🐡",
-  "🐠",
-  "🐟",
-  "🐬",
-  "🐳",
-  "🐋",
-  "🦈",
-  "🐊",
-  "🐅",
-  "🐆",
-  "🦓",
-  "🦍",
-  "🦧",
-  "🦣",
-  "🌸",
-  "🌺",
-  "🌻",
-  "🌹",
-  "🌷",
-  "🌼",
-  "💐",
-  "🍀",
-  "🌿",
-  "🌱",
-  "🌲",
-  "🌳",
-  "🌴",
-  "🍁",
-  "🍂",
-  "🍃",
-  "🍎",
-  "🍊",
-  "🍋",
-  "🍇",
-  "🍓",
-  "🫐",
-  "🍈",
-  "🍑",
-  "🍒",
-  "🥝",
-  "🍅",
-  "🥥",
-  "🥦",
-  "🌽",
-  "🍕",
-  "🍔",
-  "🌮",
-  "🍜",
-  "🍣",
-  "🍩",
-  "🎂",
-  "🍦",
-  "☕",
-  "🧋",
-  "🍺",
-  "🎮",
-  "⚽",
-  "🏀",
-  "🎸",
-  "🎵",
-  "🎨",
-  "🚀",
+  "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵",
+  "🙈", "🙉", "🙊", "🐔", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄",
+  "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷", "🦂", "🐢", "🐍", "🦎", "🦖", "🦕",
+  "🐙", "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆",
+  "🦓", "🦍", "🦧", "🦣", "🌸", "🌺", "🌻", "🌹", "🌷", "🌼", "💐", "🍀", "🌿", "🌱", "🌲",
+  "🌳", "🌴", "🍁", "🍂", "🍃", "🍎", "🍊", "🍋", "🍇", "🍓", "🫐", "🍈", "🍑", "🍒", "🥝",
+  "🍅", "🥥", "🥦", "🌽", "🍕", "🍔", "🌮", "🍜", "🍣", "🍩", "🎂", "🍦", "☕", "🧋", "🍺",
+  "🎮", "⚽", "🏀", "🎸", "🎵", "🎨", "🚀",
 ];
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
@@ -416,6 +147,8 @@ const shareUrl = $("shareUrl");
 const toastContainer = $("toastContainer");
 const themeToggleBtn = $("themeToggleBtn");
 const themeIcon = $("themeIcon");
+// FIX 1: theme label text element
+const themeLabelText = $("themeLabelText");
 const avatarWrap = $("avatarWrap");
 const profileDropdown = $("profileDropdown");
 const pdUser = $("pdUser");
@@ -513,8 +246,9 @@ const groupMemberSearch = $("groupMemberSearch");
 const groupMemberList = $("groupMemberList");
 const selectedMembersWrap = $("selectedMembersWrap");
 
-// FIX 2: Chats nav item
-const chatsNavItem = $("chatsNavItem");
+// FIX 3: Mobile footer profile elements
+const avatarName = $("avatarName");
+const avatarEmail = $("avatarEmail");
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RESPONSIVE helpers
@@ -577,16 +311,6 @@ window.addEventListener("resize", () => {
   }
   if (w > 1024) closeInfoPanel();
   _lastW = w;
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// FIX 2: CHATS NAV ITEM — click opens "All Chats" modal / scrolls into view
-// ═══════════════════════════════════════════════════════════════════════════
-chatsNavItem?.addEventListener("click", (e) => {
-  e.preventDefault();
-  // Close sidebar on mobile, open new chat modal to show all users
-  closeSidebar();
-  openNewChatModal();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -668,16 +392,23 @@ function updatePinMenuLabel() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// THEME
+// FIX 1: THEME — dynamic label update
 // ═══════════════════════════════════════════════════════════════════════════
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  if (themeIcon)
+
+  // Update icon
+  if (themeIcon) {
     themeIcon.className = theme === "dark" ? "ri-sun-line" : "ri-moon-line";
-  // Update mobile sidebar theme label
-  const themeLabel = document.querySelector(".theme-label-text");
-  if (themeLabel)
-    themeLabel.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+  }
+
+  // FIX 1: Update dynamic label text
+  // When currently DARK → button shows "Light Mode" (click to switch to light)
+  // When currently LIGHT → button shows "Dark Mode" (click to switch to dark)
+  if (themeLabelText) {
+    themeLabelText.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+  }
+
   localStorage.setItem("nt_theme", theme);
 }
 
@@ -688,6 +419,8 @@ themeToggleBtn?.addEventListener("click", () => {
       : "dark",
   );
 });
+
+// Apply saved or default theme on load
 applyTheme(localStorage.getItem("nt_theme") || "light");
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -746,7 +479,7 @@ async function init() {
   if (pdUser) pdUser.textContent = ME.name;
   if (shareUrl) shareUrl.textContent = window.location.href;
 
-  // FIX 3: Update mobile sidebar footer profile info
+  // FIX 3: Populate mobile footer profile card
   updateMobileFooterProfile();
 
   await setPresence(true);
@@ -762,12 +495,10 @@ async function init() {
   openRoom(ROOM_GENERAL, "General Chat", null, true, null, false);
 }
 
-// Update the mobile footer to show name, email, presence dot
+// ─── FIX 3: Mobile footer profile info ────────────────────────────────────
 function updateMobileFooterProfile() {
-  const nameEl = document.querySelector(".avatar-name");
-  const emailEl = document.querySelector(".avatar-email");
-  if (nameEl) nameEl.textContent = ME.name;
-  if (emailEl) emailEl.textContent = ME.email || "";
+  if (avatarName) avatarName.textContent = ME.name || "";
+  if (avatarEmail) avatarEmail.textContent = ME.email || "";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -784,7 +515,7 @@ async function setPresence(online) {
       online,
       lastSeen: serverTimestamp(),
     });
-  } catch (_) {}
+  } catch (_) { }
 }
 
 let presenceHeartbeat = null;
@@ -888,10 +619,10 @@ function renderGroupsList() {
   if (!groupsList) return;
   if (!allGroups.length) {
     groupsList.innerHTML = `
-            <li class="groups-empty">
-                <i class="ri-team-line"></i>
-                No groups yet.<br>Tap <b>+</b> to create one.
-            </li>`;
+      <li class="groups-empty">
+        <i class="ri-team-line"></i>
+        No groups yet.<br>Tap <b>+</b> to create one.
+      </li>`;
     return;
   }
   groupsList.innerHTML = allGroups
@@ -900,12 +631,12 @@ function renderGroupsList() {
       const isActive = activeRoomId === `group__${g.id}`;
       return `
         <li class="group-item ${isActive ? "active" : ""}" data-id="${g.id}">
-            <div class="group-av">${escHtml(g.icon || "💬")}</div>
-            <div class="group-info">
-                <div class="group-name">${escHtml(g.name)}</div>
-                <div class="group-desc">${escHtml(g.desc || `${g.members?.length || 0} members`)}</div>
-            </div>
-            ${isAdmin ? `<span class="group-admin-badge">Admin</span>` : ""}
+          <div class="group-av">${escHtml(g.icon || "💬")}</div>
+          <div class="group-info">
+            <div class="group-name">${escHtml(g.name)}</div>
+            <div class="group-desc">${escHtml(g.desc || `${g.members?.length || 0} members`)}</div>
+          </div>
+          ${isAdmin ? `<span class="group-admin-badge">Admin</span>` : ""}
         </li>`;
     })
     .join("");
@@ -995,15 +726,14 @@ function renderGroupMemberPicker(q) {
         : u.name.charAt(0).toUpperCase();
       return `
         <li class="modal-user-item" data-uid="${u.uid}">
-            <div class="modal-user-av" style="background:${color};">
-                ${av}
-                <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
-            </div>
-            <div class="modal-user-info">
-                <div class="modal-user-name">${escHtml(u.name)}</div>
-                <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
-            </div>
-            <div class="modal-check"><i class="ri-check-line"></i></div>
+          <div class="modal-user-av" style="background:${color};">${av}
+            <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+          </div>
+          <div class="modal-user-info">
+            <div class="modal-user-name">${escHtml(u.name)}</div>
+            <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+          </div>
+          <div class="modal-check"><i class="ri-check-line"></i></div>
         </li>`;
     })
     .join("");
@@ -1030,9 +760,9 @@ function renderSelectedMembersChips() {
         : u.name.charAt(0).toUpperCase();
       return `
         <div class="member-chip" data-uid="${u.uid}">
-            <div class="chip-av" style="background:${color};">${av}</div>
-            <span>${escHtml(u.name)}</span>
-            <span class="chip-remove" title="Remove">✕</span>
+          <div class="chip-av" style="background:${color};">${av}</div>
+          <span>${escHtml(u.name)}</span>
+          <span class="chip-remove" title="Remove">✕</span>
         </div>`;
     })
     .join("");
@@ -1110,10 +840,7 @@ function renderGsMembers(grp) {
   gsGroupMembersList.innerHTML = members
     .map((uid) => {
       const u = allPresenceUsers.find((p) => p.uid === uid) || {
-        uid,
-        name: uid,
-        avatar: "",
-        online: false,
+        uid, name: uid, avatar: "", online: false,
       };
       const color = colorFor(u.name);
       const av = u.avatar
@@ -1124,12 +851,14 @@ function renderGsMembers(grp) {
       const canKick = !isAdmin && !isSelf;
       return `
         <li class="modal-user-item" data-uid="${uid}" style="cursor:default;">
-            <div class="modal-user-av" style="background:${color};">${av}<div class="modal-online-dot ${u.online ? "online" : "offline"}"></div></div>
-            <div class="modal-user-info">
-                <div class="modal-user-name">${escHtml(u.name)}${isAdmin ? ' <span style="font-size:10px;color:var(--primary);font-weight:700;">(Admin)</span>' : ""}</div>
-                <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
-            </div>
-            ${canKick ? `<button class="icon-btn gs-kick-btn" data-uid="${uid}" title="Remove from group" style="color:var(--error);"><i class="ri-user-unfollow-line"></i></button>` : ""}
+          <div class="modal-user-av" style="background:${color};">${av}
+            <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+          </div>
+          <div class="modal-user-info">
+            <div class="modal-user-name">${escHtml(u.name)}${isAdmin ? ' <span style="font-size:10px;color:var(--primary);font-weight:700;">(Admin)</span>' : ""}</div>
+            <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+          </div>
+          ${canKick ? `<button class="icon-btn gs-kick-btn" data-uid="${uid}" title="Remove from group" style="color:var(--error);"><i class="ri-user-unfollow-line"></i></button>` : ""}
         </li>`;
     })
     .join("");
@@ -1167,12 +896,14 @@ function renderGsAddMembers(q) {
         : u.name.charAt(0).toUpperCase();
       return `
         <li class="modal-user-item" data-uid="${u.uid}">
-            <div class="modal-user-av" style="background:${color};">${av}<div class="modal-online-dot ${u.online ? "online" : "offline"}"></div></div>
-            <div class="modal-user-info">
-                <div class="modal-user-name">${escHtml(u.name)}</div>
-                <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
-            </div>
-            <button class="icon-btn" style="color:var(--primary);"><i class="ri-user-add-line"></i></button>
+          <div class="modal-user-av" style="background:${color};">${av}
+            <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+          </div>
+          <div class="modal-user-info">
+            <div class="modal-user-name">${escHtml(u.name)}</div>
+            <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+          </div>
+          <button class="icon-btn" style="color:var(--primary);"><i class="ri-user-add-line"></i></button>
         </li>`;
     })
     .join("");
@@ -1203,8 +934,7 @@ groupSettingsCancel?.addEventListener("click", () =>
   groupSettingsModal?.classList.add("hidden"),
 );
 groupSettingsModal?.addEventListener("click", (e) => {
-  if (e.target === groupSettingsModal)
-    groupSettingsModal.classList.add("hidden");
+  if (e.target === groupSettingsModal) groupSettingsModal.classList.add("hidden");
 });
 
 groupSettingsSave?.addEventListener("click", async () => {
@@ -1226,16 +956,9 @@ groupSettingsSave?.addEventListener("click", async () => {
 gsDeleteGroup?.addEventListener("click", async () => {
   const grp = activeRoomMeta.groupData;
   if (!grp) return;
-  if (
-    !confirm(
-      `Delete group "${grp.name}"? This will remove all messages and cannot be undone.`,
-    )
-  )
-    return;
+  if (!confirm(`Delete group "${grp.name}"? This will remove all messages and cannot be undone.`)) return;
   try {
-    const snap = await getDocs(
-      collection(db, "rooms", `group__${grp.id}`, "messages"),
-    );
+    const snap = await getDocs(collection(db, "rooms", `group__${grp.id}`, "messages"));
     await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
     await deleteDoc(doc(db, "groups", grp.id));
     groupSettingsModal?.classList.add("hidden");
@@ -1273,7 +996,7 @@ function renderContactsList() {
   if (!pinnedList) return;
   pinnedList.innerHTML = "";
 
-  // General chat — always shown
+  // General chat — always pinned
   const generalLi = document.createElement("li");
   generalLi.innerHTML = buildChatItemHtml(
     {
@@ -1410,18 +1133,18 @@ function renderOnlinePanel(users) {
           ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
           : u.name.charAt(0).toUpperCase();
         return `
-            <li>
-              <div class="ip-user-row">
-                <div class="ip-user-av-wrap">
-                  <div class="ip-user-av" style="background:${color};">${av}</div>
-                  ${u.online ? `<div class="ip-user-dot"></div>` : ""}
-                </div>
-                <div>
-                  <div class="ip-user-name">${escHtml(u.name)}</div>
-                  <div class="ip-user-label">${u.online ? "Online" : "Offline"}</div>
-                </div>
+          <li>
+            <div class="ip-user-row">
+              <div class="ip-user-av-wrap">
+                <div class="ip-user-av" style="background:${color};">${av}</div>
+                ${u.online ? `<div class="ip-user-dot"></div>` : ""}
               </div>
-            </li>`;
+              <div>
+                <div class="ip-user-name">${escHtml(u.name)}</div>
+                <div class="ip-user-label">${u.online ? "Online" : "Offline"}</div>
+              </div>
+            </div>
+          </li>`;
       })
       .join("");
   }
@@ -1550,10 +1273,7 @@ function renderGroupMembersPanel(grp) {
   ipGroupMembersList.innerHTML = members
     .map((uid) => {
       const u = allPresenceUsers.find((p) => p.uid === uid) || {
-        uid,
-        name: uid,
-        avatar: "",
-        online: false,
+        uid, name: uid, avatar: "", online: false,
       };
       const color = colorFor(u.name);
       const av = u.avatar
@@ -1649,9 +1369,7 @@ mdClearChat?.addEventListener("click", async () => {
   if (!activeRoomId) return;
   if (!confirm("Clear all messages in this chat?")) return;
   try {
-    const snap = await getDocs(
-      collection(db, "rooms", activeRoomId, "messages"),
-    );
+    const snap = await getDocs(collection(db, "rooms", activeRoomId, "messages"));
     await Promise.all(
       snap.docs.map((d) =>
         updateDoc(d.ref, { text: "", deleted: true, fileData: null }),
@@ -1668,9 +1386,7 @@ mdDeleteChat?.addEventListener("click", async () => {
   if (!activeRoomId) return;
   if (!confirm("Delete this entire chat? This cannot be undone.")) return;
   try {
-    const snap = await getDocs(
-      collection(db, "rooms", activeRoomId, "messages"),
-    );
+    const snap = await getDocs(collection(db, "rooms", activeRoomId, "messages"));
     await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
     const pinId =
       activeRoomId === ROOM_GENERAL
@@ -1704,22 +1420,16 @@ mdAddFav?.addEventListener("click", () => {
   if (favouriteChats.has(favId)) {
     favouriteChats.delete(favId);
     showToast("Removed from favourites", "success");
-    if (mdAddFav)
-      mdAddFav.innerHTML = `<i class="ri-star-line"></i> Add to Fav`;
+    if (mdAddFav) mdAddFav.innerHTML = `<i class="ri-star-line"></i> Add to Fav`;
   } else {
     favouriteChats.add(favId);
     showToast("Added to favourites ⭐", "success");
-    if (mdAddFav)
-      mdAddFav.innerHTML = `<i class="ri-star-fill"></i> Remove from Fav`;
+    if (mdAddFav) mdAddFav.innerHTML = `<i class="ri-star-fill"></i> Remove from Fav`;
   }
 });
 
-editNickClose?.addEventListener("click", () =>
-  editNickModal.classList.add("hidden"),
-);
-editNickCancel?.addEventListener("click", () =>
-  editNickModal.classList.add("hidden"),
-);
+editNickClose?.addEventListener("click", () => editNickModal.classList.add("hidden"));
+editNickCancel?.addEventListener("click", () => editNickModal.classList.add("hidden"));
 editNickModal?.addEventListener("click", (e) => {
   if (e.target === editNickModal) editNickModal.classList.add("hidden");
 });
@@ -1782,7 +1492,7 @@ selectDelete?.addEventListener("click", async () => {
         deleted: true,
         fileData: null,
       });
-    } catch (_) {}
+    } catch (_) { }
   }
   showToast(`${selectedMsgIds.size} message(s) deleted`, "success");
   exitSelectMode();
@@ -1794,9 +1504,7 @@ selectForward?.addEventListener("click", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIX 1: MESSAGES — Proper two-sided rendering
-// Sent: right side, teal bubble
-// Received: left side, white bubble
+// MESSAGES
 // ═══════════════════════════════════════════════════════════════════════════
 let lastRenderDate = null;
 
@@ -1812,7 +1520,8 @@ function listenMessages(roomId) {
         renderMessage(change.doc.data(), change.doc.id);
       else if (change.type === "modified")
         updateRenderedMessage(change.doc.data(), change.doc.id);
-      else if (change.type === "removed") removeRenderedMessage(change.doc.id);
+      else if (change.type === "removed")
+        removeRenderedMessage(change.doc.id);
     });
     scrollBottom();
   });
@@ -1820,17 +1529,11 @@ function listenMessages(roomId) {
 
 function renderMessage(data, id) {
   const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-  // FIX: Compare message sender uid with ME uid
   const isMine = data.uid === ME?.uid;
-  const timeStr = ts.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const timeStr = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const dateStr = ts.toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
+    weekday: "short", month: "short", day: "numeric",
   });
   if (dateStr !== lastRenderDate) {
     lastRenderDate = dateStr;
@@ -1842,7 +1545,6 @@ function renderMessage(data, id) {
 
   if (data.type === "sticker") {
     const row = document.createElement("div");
-    // FIX: Proper class assignment based on isMine
     row.className = `msg-row ${isMine ? "sent" : "received"}`;
     row.dataset.id = id;
     const color = colorFor(data.name || "?");
@@ -1851,25 +1553,24 @@ function renderMessage(data, id) {
       : (data.name || "?").charAt(0).toUpperCase();
     if (isMine) {
       row.innerHTML = `
-            <div class="msg-col">
-              <div class="msg-sticker">${escHtml(data.text)}</div>
-              <div class="msg-meta">${timeStr}</div>
-            </div>`;
+        <div class="msg-col">
+          <div class="msg-sticker">${escHtml(data.text)}</div>
+          <div class="msg-meta">${timeStr}</div>
+        </div>`;
     } else {
       row.innerHTML = `
-            <div class="msg-av" style="background:${color};">${avHtml}</div>
-            <div class="msg-col">
-              <div class="msg-sender-name">${escHtml(data.name || "")}</div>
-              <div class="msg-sticker">${escHtml(data.text)}</div>
-              <div class="msg-meta">${timeStr}</div>
-            </div>`;
+        <div class="msg-av" style="background:${color};">${avHtml}</div>
+        <div class="msg-col">
+          <div class="msg-sender-name">${escHtml(data.name || "")}</div>
+          <div class="msg-sticker">${escHtml(data.text)}</div>
+          <div class="msg-meta">${timeStr}</div>
+        </div>`;
     }
     messagesArea.appendChild(row);
     return;
   }
 
   const row = document.createElement("div");
-  // FIX: sent goes right, received goes left
   row.className = `msg-row ${isMine ? "sent" : "received"}`;
   row.dataset.id = id;
 
@@ -1879,27 +1580,24 @@ function renderMessage(data, id) {
     : (data.name || "?").charAt(0).toUpperCase();
 
   const bubbleContent = buildBubbleContent(data, timeStr, isMine);
-  const canEdit =
-    isMine && data.type === "text" && !data.deleted && !data.edited;
+  const canEdit = isMine && data.type === "text" && !data.deleted && !data.edited;
   const actionsHtml =
     isMine && !data.deleted
       ? `<div class="msg-actions">
-             ${canEdit ? `<button class="msg-act-btn" data-action="edit" data-id="${id}" title="Edit"><i class="ri-edit-line"></i></button>` : ""}
-             <button class="msg-act-btn delete" data-action="delete" data-id="${id}" title="Delete"><i class="ri-delete-bin-line"></i></button>
-           </div>`
+           ${canEdit ? `<button class="msg-act-btn" data-action="edit" data-id="${id}" title="Edit"><i class="ri-edit-line"></i></button>` : ""}
+           <button class="msg-act-btn delete" data-action="delete" data-id="${id}" title="Delete"><i class="ri-delete-bin-line"></i></button>
+         </div>`
       : "";
 
   if (isMine) {
-    // Sent: no avatar, bubble on right
     row.innerHTML = `${actionsHtml}<div class="msg-col"><div class="bubble">${bubbleContent}</div></div>`;
   } else {
-    // Received: avatar on left, sender name, bubble
     row.innerHTML = `
-        <div class="msg-av" style="background:${color};">${avHtml}</div>
-        <div class="msg-col">
-          <div class="msg-sender-name">${escHtml(data.name || "Unknown")}</div>
-          <div class="bubble">${bubbleContent}</div>
-        </div>`;
+      <div class="msg-av" style="background:${color};">${avHtml}</div>
+      <div class="msg-col">
+        <div class="msg-sender-name">${escHtml(data.name || "Unknown")}</div>
+        <div class="bubble">${bubbleContent}</div>
+      </div>`;
   }
 
   if (data.deleted) row.querySelector(".bubble")?.classList.add("deleted-msg");
@@ -1917,30 +1615,30 @@ function buildBubbleContent(data, timeStr, isMine) {
 
   if (data.type === "image") {
     return `
-        <div class="msg-img-wrap">
-          <img class="msg-img" src="${escHtml(data.fileData)}" alt="${escHtml(data.fileName || "image")}" />
-          <a class="msg-img-download" href="${escHtml(data.fileData)}" download="${escHtml(data.fileName || "image.png")}" title="Download" onclick="event.stopPropagation()">
-            <i class="ri-download-2-line"></i>
-          </a>
-        </div>
-        <div class="msg-meta">${timeStr}${editedLabel}${isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : ""}</div>`;
+      <div class="msg-img-wrap">
+        <img class="msg-img" src="${escHtml(data.fileData)}" alt="${escHtml(data.fileName || "image")}" />
+        <a class="msg-img-download" href="${escHtml(data.fileData)}" download="${escHtml(data.fileName || "image.png")}" title="Download" onclick="event.stopPropagation()">
+          <i class="ri-download-2-line"></i>
+        </a>
+      </div>
+      <div class="msg-meta">${timeStr}${editedLabel}${isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : ""}</div>`;
   }
 
   if (data.type === "file") {
     const icon = getFileIcon(data.fileName || "");
     const sizeStr = formatFileSize(data.fileSize || 0);
     return `
-        <a class="msg-file" href="${escHtml(data.fileData)}" download="${escHtml(data.fileName || "file")}" target="_blank">
-          <i class="${icon}"></i>
-          <div class="msg-file-info">
-            <div class="msg-file-name">${escHtml(data.fileName || "File")}</div>
-            <div class="msg-file-size">${sizeStr}</div>
-          </div>
-          <span class="msg-file-download" title="Download" onclick="event.stopPropagation()">
-            <i class="ri-download-2-line"></i>
-          </span>
-        </a>
-        <div class="msg-meta">${timeStr}${editedLabel}${isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : ""}</div>`;
+      <a class="msg-file" href="${escHtml(data.fileData)}" download="${escHtml(data.fileName || "file")}" target="_blank">
+        <i class="${icon}"></i>
+        <div class="msg-file-info">
+          <div class="msg-file-name">${escHtml(data.fileName || "File")}</div>
+          <div class="msg-file-size">${sizeStr}</div>
+        </div>
+        <span class="msg-file-download" title="Download" onclick="event.stopPropagation()">
+          <i class="ri-download-2-line"></i>
+        </span>
+      </a>
+      <div class="msg-meta">${timeStr}${editedLabel}${isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : ""}</div>`;
   }
 
   return `${escHtml(data.text)}${editedLabel}<div class="msg-meta">${timeStr}${isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : ""}</div>`;
@@ -1970,10 +1668,7 @@ function updateRenderedMessage(data, id) {
   if (!bubble) return;
   const isMine = data.uid === ME?.uid;
   const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-  const timeStr = ts.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const timeStr = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   bubble.innerHTML = buildBubbleContent(data, timeStr, isMine);
   if (data.deleted) bubble.classList.add("deleted-msg");
   else bubble.classList.remove("deleted-msg");
@@ -2152,16 +1847,14 @@ async function clearMyTyping() {
   if (!ME || !activeRoomId) return;
   try {
     await deleteDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 function listenTyping(roomId) {
   typingUnsub = onSnapshot(
     collection(db, "rooms", roomId, "typing"),
     (snap) => {
-      const others = snap.docs
-        .filter((d) => d.id !== ME?.uid)
-        .map((d) => d.data());
+      const others = snap.docs.filter((d) => d.id !== ME?.uid).map((d) => d.data());
       if (others.length) {
         const t = others[0];
         buildAvatarEl(typingAv, t.name, t.avatar || "");
@@ -2182,8 +1875,7 @@ function listenTyping(roomId) {
           chStatus.className = "ch-status";
         } else {
           const other = allPresenceUsers.find(
-            (u) =>
-              u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId,
+            (u) => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId,
           );
           if (other) {
             chStatus.textContent = other.online ? "Online" : "Offline";
@@ -2219,9 +1911,7 @@ function closeEmojiPanel() {
 
 document.querySelectorAll(".etab").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document
-      .querySelectorAll(".etab")
-      .forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".etab").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     currentEmojiTab = btn.dataset.tab;
     renderEmojiTab(currentEmojiTab);
@@ -2314,21 +2004,12 @@ async function runContactSearch(q) {
   for (const room of roomsToSearch) {
     try {
       const snap = await getDocs(
-        query(
-          collection(db, "rooms", room.roomId, "messages"),
-          orderBy("createdAt", "desc"),
-        ),
+        query(collection(db, "rooms", room.roomId, "messages"), orderBy("createdAt", "desc")),
       );
       snap.docs.forEach((d) => {
         const data = d.data();
-        if (
-          data.type === "text" &&
-          !data.deleted &&
-          data.text.toLowerCase().includes(q)
-        ) {
-          const ts = data.createdAt?.toDate
-            ? data.createdAt.toDate()
-            : new Date();
+        if (data.type === "text" && !data.deleted && data.text.toLowerCase().includes(q)) {
+          const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
           results.push({
             roomId: room.roomId,
             roomName: room.name,
@@ -2339,7 +2020,7 @@ async function runContactSearch(q) {
           });
         }
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   if (!results.length) {
@@ -2356,10 +2037,7 @@ async function runContactSearch(q) {
           new RegExp(escHtml(q), "gi"),
           (m) => `<mark>${m}</mark>`,
         );
-        const timeStr = r.ts.toLocaleDateString([], {
-          month: "short",
-          day: "numeric",
-        });
+        const timeStr = r.ts.toLocaleDateString([], { month: "short", day: "numeric" });
         return `<li class="search-result-msg" data-room="${r.roomId}" data-msg="${r.msgId}">
           <div class="srm-name">${escHtml(r.roomName)} · ${escHtml(r.senderName)}</div>
           <div class="srm-text">${highlighted}</div>
@@ -2375,23 +2053,11 @@ async function runContactSearch(q) {
       const msgId = el.dataset.msg;
       const room = roomsMap[roomId];
       if (!room) return;
-      const targetUser = allPresenceUsers.find(
-        (u) => getRoomId(ME.uid, u.uid) === roomId,
-      );
+      const targetUser = allPresenceUsers.find((u) => getRoomId(ME.uid, u.uid) === roomId);
       const isPublic = roomId === ROOM_GENERAL;
       const isGroup = roomId.startsWith("group__");
-      const grpData = isGroup
-        ? allGroups.find((g) => `group__${g.id}` === roomId)
-        : null;
-      openRoom(
-        roomId,
-        room.name,
-        targetUser?.avatar || null,
-        isPublic,
-        targetUser || null,
-        isGroup,
-        grpData,
-      );
+      const grpData = isGroup ? allGroups.find((g) => `group__${g.id}` === roomId) : null;
+      openRoom(roomId, room.name, targetUser?.avatar || null, isPublic, targetUser || null, isGroup, grpData);
       highlightContact(targetUser?.uid || ROOM_GENERAL);
       mobileChatOpen();
       searchInput.value = "";
@@ -2454,8 +2120,7 @@ chatSearchNext?.addEventListener("click", () => {
 
 chatSearchPrev?.addEventListener("click", () => {
   if (!searchMatches.length) return;
-  searchCurrentIdx =
-    (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
+  searchCurrentIdx = (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
   jumpToSearchResult(searchCurrentIdx);
   chatSearchCount.textContent = `${searchCurrentIdx + 1}/${searchMatches.length}`;
 });
@@ -2470,11 +2135,9 @@ function closeChatSearch() {
 }
 
 function clearSearchHighlights() {
-  messagesArea
-    .querySelectorAll(".search-highlight, .search-current")
-    .forEach((el) => {
-      el.classList.remove("search-highlight", "search-current");
-    });
+  messagesArea.querySelectorAll(".search-highlight, .search-current").forEach((el) => {
+    el.classList.remove("search-highlight", "search-current");
+  });
 }
 
 function highlightSearchMatches() {
@@ -2482,9 +2145,7 @@ function highlightSearchMatches() {
 }
 
 function jumpToSearchResult(idx) {
-  messagesArea
-    .querySelectorAll(".search-current")
-    .forEach((el) => el.classList.remove("search-current"));
+  messagesArea.querySelectorAll(".search-current").forEach((el) => el.classList.remove("search-current"));
   if (searchMatches[idx]) {
     searchMatches[idx].classList.add("search-current");
     searchMatches[idx].scrollIntoView({ behavior: "smooth", block: "center" });
@@ -2492,15 +2153,13 @@ function jumpToSearchResult(idx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIX 2: NEW CHAT MODAL — shows all users to start chat
+// NEW CHAT MODAL
 // ═══════════════════════════════════════════════════════════════════════════
 newChatBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   openNewChatModal();
 });
-newChatModalClose?.addEventListener("click", () =>
-  newChatModal.classList.add("hidden"),
-);
+newChatModalClose?.addEventListener("click", () => newChatModal.classList.add("hidden"));
 newChatModal?.addEventListener("click", (e) => {
   if (e.target === newChatModal) newChatModal.classList.add("hidden");
 });
@@ -2534,8 +2193,7 @@ function renderNewChatList(users) {
         : u.name.charAt(0).toUpperCase();
       return `
         <li class="modal-user-item" data-uid="${u.uid}">
-          <div class="modal-user-av" style="background:${color};">
-            ${av}
+          <div class="modal-user-av" style="background:${color};">${av}
             <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
           </div>
           <div class="modal-user-info">
