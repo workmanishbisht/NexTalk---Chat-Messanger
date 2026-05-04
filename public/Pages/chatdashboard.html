@@ -98,26 +98,38 @@
             </li>
         </ul>
 
-        <!-- FIX 1: Sidebar footer restructured for mobile visibility -->
+        <!-- SIDEBAR FOOTER -->
         <div class="sidebar-footer">
+            <!-- FIX 1: Theme toggle with dynamic label text (visible on mobile) -->
             <button class="sidebar-icon-btn tooltip-wrap" data-tip="Toggle Theme" id="themeToggleBtn">
                 <i class="ri-moon-line" id="themeIcon"></i>
+                <span class="theme-label-text" id="themeLabelText">Dark Mode</span>
             </button>
+
             <div class="nav-item tooltip-wrap sidebar-settings-item" data-tip="Settings">
                 <a href="#">
                     <i class="ri-settings-3-line"></i>
                     <span class="nav-label">Settings</span>
                 </a>
             </div>
+
+            <!-- FIX 3: Profile card with name + email + chevron -->
             <div class="sidebar-avatar-wrap tooltip-wrap" data-tip="My Profile" id="avatarWrap">
                 <div class="sidebar-avatar" id="sidebarAvatar"></div>
                 <span class="presence-dot"></span>
+                <!-- User info (visible on mobile) -->
+                <div class="avatar-user-info">
+                    <div class="avatar-name" id="avatarName"></div>
+                    <div class="avatar-email" id="avatarEmail"></div>
+                </div>
+                <!-- Chevron (mobile only) -->
+                <i class="ri-arrow-up-s-line avatar-chevron" id="avatarChevron"></i>
+
                 <div class="profile-dropdown" id="profileDropdown">
                     <div class="pd-user" id="pdUser"></div>
                     <hr class="pd-divider">
                     <button class="pd-item" id="pdProfile"><i class="ri-user-line"></i> My Profile</button>
-                    <button class="pd-item pd-logout" id="pdLogout"><i class="ri-logout-circle-r-line"></i> Log
-                        Out</button>
+                    <button class="pd-item pd-logout" id="pdLogout"><i class="ri-logout-circle-r-line"></i> Log Out</button>
                 </div>
             </div>
         </div>
@@ -188,7 +200,6 @@
                     <button class="icon-btn info-panel-toggle-btn" id="infoPanelToggleBtn" title="Info">
                         <i class="ri-information-line"></i>
                     </button>
-                    <!-- Group admin actions (shown only in group rooms for admin) -->
                     <button class="icon-btn hidden" id="groupSettingsBtn" title="Group Settings">
                         <i class="ri-settings-3-line"></i>
                     </button>
@@ -243,6 +254,7 @@
                 <div class="emoji-content" id="emojiContent"></div>
             </div>
 
+            <!-- FIX 2: Input bar is inside chat-view, stays at bottom via flex layout -->
             <div class="input-bar">
                 <div class="attach-wrap">
                     <button class="icon-btn attach-btn" id="attachBtn" title="Attach">
@@ -294,7 +306,6 @@
                 <button class="icon-btn"><i class="ri-user-add-line"></i></button>
             </div>
         </div>
-        <!-- Group members section (shown for group rooms) -->
         <div class="ip-section hidden" id="ipGroupMembersSection">
             <div class="ip-section-label">Group Members</div>
             <ul class="ip-online-list" id="ipGroupMembersList"></ul>
@@ -352,25 +363,16 @@
                 <button class="icon-btn" id="createGroupModalClose"><i class="ri-close-line"></i></button>
             </div>
             <div style="padding: 16px 18px; display:flex; flex-direction:column; gap:12px;">
-                <!-- Group name -->
                 <div>
-                    <label
-                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group
-                        Name *</label>
-                    <input type="text" id="groupNameInput" placeholder="Enter group name…" class="nick-input"
-                        maxlength="60" />
+                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group Name *</label>
+                    <input type="text" id="groupNameInput" placeholder="Enter group name…" class="nick-input" maxlength="60" />
                 </div>
-                <!-- Group description -->
                 <div>
-                    <label
-                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Description</label>
-                    <input type="text" id="groupDescInput" placeholder="Short description (optional)…"
-                        class="nick-input" maxlength="100" />
+                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Description</label>
+                    <input type="text" id="groupDescInput" placeholder="Short description (optional)…" class="nick-input" maxlength="100" />
                 </div>
-                <!-- Group icon -->
                 <div>
-                    <label
-                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Icon</label>
+                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Icon</label>
                     <div class="group-icon-picker" id="groupIconPicker">
                         <span class="gip-item active" data-icon="💬">💬</span>
                         <span class="gip-item" data-icon="🎮">🎮</span>
@@ -386,19 +388,13 @@
                         <span class="gip-item" data-icon="🔥">🔥</span>
                     </div>
                 </div>
-                <!-- Add members -->
                 <div>
-                    <label
-                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add
-                        Members</label>
+                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add Members</label>
                     <div class="modal-search-wrap" style="margin:0 0 8px;">
                         <i class="ri-search-line"></i>
-                        <input type="text" id="groupMemberSearch" placeholder="Search users to add…"
-                            autocomplete="off" />
+                        <input type="text" id="groupMemberSearch" placeholder="Search users to add…" autocomplete="off" />
                     </div>
-                    <!-- Selected members chips -->
                     <div class="selected-members-wrap" id="selectedMembersWrap"></div>
-                    <!-- User list -->
                     <ul class="modal-user-list group-member-list" id="groupMemberList" style="max-height:180px;"></ul>
                 </div>
             </div>
@@ -409,7 +405,7 @@
         </div>
     </div>
 
-    <!-- GROUP SETTINGS MODAL (admin only) -->
+    <!-- GROUP SETTINGS MODAL -->
     <div class="modal-overlay hidden" id="groupSettingsModal">
         <div class="modal-box">
             <div class="modal-header">
@@ -418,32 +414,24 @@
             </div>
             <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
                 <div>
-                    <label
-                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group
-                        Name</label>
+                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group Name</label>
                     <input type="text" id="gsGroupName" class="nick-input" placeholder="Group name…" />
                 </div>
                 <div>
-                    <label
-                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Members</label>
+                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Members</label>
                     <ul class="modal-user-list" id="gsGroupMembersList"
-                        style="max-height:220px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;">
-                    </ul>
+                        style="max-height:220px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;"></ul>
                 </div>
                 <div>
-                    <label
-                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add
-                        More Members</label>
+                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add More Members</label>
                     <div class="modal-search-wrap" style="margin:0 0 6px;">
                         <i class="ri-search-line"></i>
                         <input type="text" id="gsAddMemberSearch" placeholder="Search users…" />
                     </div>
                     <ul class="modal-user-list" id="gsAddMemberList"
-                        style="max-height:140px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;">
-                    </ul>
+                        style="max-height:140px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;"></ul>
                 </div>
-                <button class="btn-secondary" id="gsDeleteGroup"
-                    style="color:var(--error);border-color:var(--error);margin-top:4px;">
+                <button class="btn-secondary" id="gsDeleteGroup" style="color:var(--error);border-color:var(--error);margin-top:4px;">
                     <i class="ri-delete-bin-line"></i> Delete Group
                 </button>
             </div>
@@ -510,7 +498,7 @@
 
     <div id="toastContainer"></div>
 
-     <!-- script file here -->
+    <!-- script file -->
     <script type="module" src="../javascript/chatdashboard.js"></script>
 </body>
 
