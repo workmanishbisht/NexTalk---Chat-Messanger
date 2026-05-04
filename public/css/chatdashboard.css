@@ -387,6 +387,7 @@ button {
     padding-bottom: 4px;
 }
 
+/* ─── FIX 1: Theme toggle button — desktop ─── */
 .sidebar-icon-btn {
     width: 36px;
     height: 36px;
@@ -404,6 +405,11 @@ button {
 .sidebar-icon-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     color: white;
+}
+
+/* Desktop theme label (tooltip only, not inline) */
+.theme-label-text {
+    display: none;
 }
 
 .sidebar-settings-item {
@@ -1477,6 +1483,8 @@ button {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    /* FIX 2: Ensure messages area doesn't overflow and push input off screen */
+    min-height: 0;
 }
 
 .date-divider {
@@ -1494,7 +1502,7 @@ button {
 }
 
 /* ═══════════════════════════════════════
-   FIX: MESSAGE ROWS — proper sent/received alignment
+   MESSAGE ROWS
 ═══════════════════════════════════════ */
 .msg-row {
     display: flex;
@@ -1505,14 +1513,12 @@ button {
     position: relative;
 }
 
-/* Sent messages → right side */
 .msg-row.sent {
     align-self: flex-end;
     flex-direction: row-reverse;
     margin-left: auto;
 }
 
-/* Received messages → left side */
 .msg-row.received {
     align-self: flex-start;
     flex-direction: row;
@@ -1523,7 +1529,6 @@ button {
     opacity: 1;
 }
 
-/* Message actions */
 .msg-actions {
     position: absolute;
     top: -28px;
@@ -1583,7 +1588,6 @@ button {
     outline-offset: 2px;
 }
 
-/* Select mode */
 .select-mode .msg-row {
     cursor: pointer;
     padding-left: 36px;
@@ -1677,11 +1681,6 @@ button {
     text-align: right;
 }
 
-/* ═══════════════════════════════════════
-   FIX: BUBBLE ALIGNMENT
-   Sent bubbles → teal, right-rounded
-   Received bubbles → white, left-rounded
-═══════════════════════════════════════ */
 .bubble {
     padding: 9px 14px;
     border-radius: 18px;
@@ -1708,7 +1707,6 @@ button {
     box-shadow: 0 2px 8px rgba(0, 128, 128, 0.07);
 }
 
-/* Meta info row inside bubble */
 .msg-meta {
     display: flex;
     align-items: center;
@@ -1854,6 +1852,7 @@ button {
     gap: 8px;
     padding: 4px 20px 6px;
     animation: msgIn .2s ease;
+    flex-shrink: 0;
 }
 
 .typing-av {
@@ -2042,7 +2041,7 @@ button {
     color: var(--primary);
 }
 
-/* Input Bar */
+/* ─── FIX 2: Input Bar — must always be visible, never pushed off screen ─── */
 .input-bar {
     display: flex;
     align-items: center;
@@ -2052,6 +2051,9 @@ button {
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     transition: background .25s;
+    /* Ensure it stays at the bottom */
+    position: relative;
+    z-index: 5;
 }
 
 .input-wrap {
@@ -2938,7 +2940,7 @@ button {
         transform: translateX(0);
     }
 
-    /* Top logo + close row */
+    /* Top logo row */
     .sidebar-logo {
         margin: 16px 16px 8px;
         width: 48px;
@@ -2946,7 +2948,7 @@ button {
         flex-shrink: 0;
     }
 
-    /* Nav items as full-width rows */
+    /* Nav items full-width */
     .nav-item {
         width: calc(100% - 16px);
         margin: 0 8px;
@@ -2987,7 +2989,6 @@ button {
         min-height: 0;
     }
 
-    /* Divider before nav items */
     .nav-links::before {
         content: '';
         display: block;
@@ -3002,11 +3003,8 @@ button {
     }
 
     /* ═══════════════════════════════
-       FIX: MOBILE SIDEBAR FOOTER
-       Matches the screenshot design:
-       - Dark Mode row
-       - Settings row
-       - Profile card with name + email
+       FIX 3: MOBILE SIDEBAR FOOTER
+       Clean layout: Theme row, Settings row, Profile card
     ═══════════════════════════════ */
     .sidebar-footer {
         width: 100%;
@@ -3020,7 +3018,7 @@ button {
         background: var(--sidebar-bg);
     }
 
-    /* Theme toggle row */
+    /* ─── FIX 1: Theme toggle row in mobile — show icon + dynamic label ─── */
     .sidebar-icon-btn {
         width: 100%;
         height: 50px;
@@ -3030,14 +3028,21 @@ button {
         gap: 14px;
         font-size: 18px;
         color: rgba(255, 255, 255, 0.75);
+        flex-direction: row;
     }
 
-    .sidebar-icon-btn::after {
-        content: attr(data-label);
+    /* Show the label text ONLY on mobile */
+    .theme-label-text {
+        display: block;
         font-size: 14px;
         font-weight: 600;
         color: rgba(255, 255, 255, 0.75);
         font-family: 'Work Sans', sans-serif;
+        transition: color var(--transition);
+    }
+
+    .sidebar-icon-btn:hover .theme-label-text {
+        color: white;
     }
 
     .sidebar-icon-btn:hover {
@@ -3075,53 +3080,58 @@ button {
         color: rgba(255,255,255,0.95) !important;
     }
 
-    /* Profile card at bottom */
+    /* ─── FIX 3: Profile card at bottom — clean layout ─── */
     .sidebar-avatar-wrap {
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 14px 16px 20px;
+        padding: 14px 16px 18px;
         cursor: pointer;
         width: 100%;
-        border-top: 1px solid rgba(255,255,255,0.08);
+        border-top: 1px solid rgba(255,255,255,0.1);
         position: relative;
         margin-bottom: 0;
     }
 
     .sidebar-avatar {
-        width: 42px;
-        height: 42px;
+        width: 40px;
+        height: 40px;
         flex-shrink: 0;
+        border-width: 2px;
     }
 
-    /* Name + email info */
-    .sidebar-avatar-wrap .avatar-user-info {
+    /* User info beside avatar */
+    .avatar-user-info {
         flex: 1;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
     }
 
-    .sidebar-avatar-wrap .avatar-user-info .avatar-name {
+    .avatar-name {
         font-size: 14px;
         font-weight: 700;
         color: #fff;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        line-height: 1.3;
     }
 
-    .sidebar-avatar-wrap .avatar-user-info .avatar-email {
-        font-size: 12px;
-        color: rgba(255,255,255,0.55);
+    .avatar-email {
+        font-size: 11px;
+        color: rgba(255,255,255,0.5);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        margin-top: 2px;
+        line-height: 1.3;
     }
 
-    /* Chevron toggle */
-    .sidebar-avatar-wrap .avatar-chevron {
-        color: rgba(255,255,255,0.5);
-        font-size: 18px;
+    /* Chevron icon */
+    .avatar-chevron {
+        color: rgba(255,255,255,0.45);
+        font-size: 16px;
         flex-shrink: 0;
         transition: transform .2s;
     }
@@ -3130,14 +3140,16 @@ button {
         transform: rotate(180deg);
     }
 
-    /* Presence dot in mobile footer */
+    /* Online dot repositioned */
     .presence-dot {
-        bottom: 14px;
-        right: calc(100% - 58px);
+        width: 10px;
+        height: 10px;
         position: absolute;
+        bottom: 14px;
+        left: 44px;
     }
 
-    /* Profile dropdown repositioned for mobile */
+    /* Profile dropdown on mobile */
     .profile-dropdown {
         position: absolute;
         bottom: calc(100% + 4px);
@@ -3169,6 +3181,7 @@ button {
         border-right: none;
     }
 
+    /* ─── FIX 2: Chat main and chat-view on mobile ─── */
     .chat-main {
         position: fixed;
         top: var(--topbar-h);
@@ -3179,6 +3192,10 @@ button {
         z-index: 11;
         transform: translateX(100%);
         transition: transform .3s cubic-bezier(.4, 0, .2, 1), background .25s;
+        /* Flex column so input bar stays at bottom */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
 
     body.chat-active .contacts-panel {
@@ -3187,6 +3204,48 @@ button {
 
     body.chat-active .chat-main {
         transform: translateX(0);
+    }
+
+    /* Ensure chat-view fills the whole chat-main and input stays visible */
+    .chat-view {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    /* Messages area scrolls, input stays fixed at bottom */
+    .messages-area {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 12px 14px 8px;
+    }
+
+    /* Input bar always visible at bottom */
+    .input-bar {
+        flex-shrink: 0;
+        padding: 10px 12px;
+        gap: 6px;
+        /* Safe area for phones with home indicator */
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+
+    /* Emoji panel flex-shrink so it doesn't push input off screen */
+    .emoji-panel {
+        flex-shrink: 0;
+        max-height: 220px;
+    }
+
+    .emoji-content {
+        height: 130px;
+    }
+
+    .typing-row {
+        padding: 4px 14px 6px;
+        flex-shrink: 0;
     }
 
     .chat-back-btn {
@@ -3255,11 +3314,12 @@ button {
     }
 
     .messages-area {
-        padding: 12px 12px 8px;
+        padding: 10px 10px 6px;
     }
 
     .input-bar {
-        padding: 10px 12px;
+        padding: 8px 10px;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
         gap: 6px;
     }
 
@@ -3271,14 +3331,6 @@ button {
 
     .ch-name {
         font-size: 14px;
-    }
-
-    .emoji-content {
-        height: 130px;
-    }
-
-    .cp-title {
-        font-size: 17px;
     }
 
     .more-dropdown {
