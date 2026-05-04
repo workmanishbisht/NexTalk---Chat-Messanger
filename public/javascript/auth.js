@@ -1,6 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
     getAuth,
+    setPersistence,
+    browserLocalPersistence,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     sendPasswordResetEmail,
@@ -23,6 +25,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+
+// ===== PERSISTENCE FIX — logout tak login yaad rahega =====
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.error("Persistence error:", err);
+});
+
 const googleProvider = new GoogleAuthProvider();
 const appleProvider = new OAuthProvider("apple.com");
 
@@ -40,6 +48,26 @@ const resetBtn = document.getElementById("resetBtn");
 const googleBtn = document.getElementById("googleBtn");
 const appleBtn = document.getElementById("appleBtn");
 const toastContainer = document.getElementById("toastContainer");
+
+// ===== ALREADY LOGGED IN CHECK =====
+// Agar user already logged in hai toh seedha dashboard pe bhejo
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        const profile = loadMyProfile(user.uid);
+        if (profile && profile.setupDone) {
+            window.location.href = "./chatdashboard.html";
+        } else {
+            window.location.href = "./profilesetup.html";
+        }
+    }
+});
+
+function loadMyProfile(uid) {
+    const raw = localStorage.getItem(`nextalk_profile_${uid}`);
+    return raw ? JSON.parse(raw) : null;
+}
 
 // ===== TOAST =====
 function showToast(message, type = "success") {
@@ -77,7 +105,7 @@ function isValidEmail(email) {
 
 // ===== REDIRECT =====
 function redirectToRoom() {
-    window.location.href = "./profilesetup.html"
+    window.location.href = "./profilesetup.html";
 }
 
 // ===== TAB SWITCHING =====
@@ -233,7 +261,9 @@ loginBtn.addEventListener("click", async () => {
     try {
         await signInWithEmailAndPassword(auth, email.value.trim(), password.value);
         showToast("Welcome back! Redirecting...", "success");
-        setTimeout(redirectToRoom, 1200);
+        setTimeout(() => {
+            window.location.href = "./chatdashboard.html";
+        }, 1200);
     } catch (err) {
         loginBtn.disabled = false;
         loginBtn.textContent = "Login";
@@ -278,7 +308,9 @@ googleBtn.addEventListener("click", async () => {
     try {
         await signInWithPopup(auth, googleProvider);
         showToast("Signed in with Google!", "success");
-        setTimeout(redirectToRoom, 1200);
+        setTimeout(() => {
+            window.location.href = "./chatdashboard.html";
+        }, 1200);
     } catch (err) {
         if (err.code !== "auth/popup-closed-by-user") {
             showToast(getFirebaseError(err.code), "error");
@@ -291,7 +323,9 @@ appleBtn.addEventListener("click", async () => {
     try {
         await signInWithPopup(auth, appleProvider);
         showToast("Signed in with Apple!", "success");
-        setTimeout(redirectToRoom, 1200);
+        setTimeout(() => {
+            window.location.href = "./chatdashboard.html";
+        }, 1200);
     } catch (err) {
         if (err.code !== "auth/popup-closed-by-user") {
             showToast(getFirebaseError(err.code), "error");
