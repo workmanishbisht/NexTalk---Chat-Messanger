@@ -68,7 +68,6 @@
 html,
 body {
     height: 100%;
-    overflow: hidden;
 }
 
 body {
@@ -387,7 +386,6 @@ button {
     padding-bottom: 4px;
 }
 
-/* ─── FIX 1: Theme toggle button — desktop ─── */
 .sidebar-icon-btn {
     width: 36px;
     height: 36px;
@@ -407,7 +405,6 @@ button {
     color: white;
 }
 
-/* Desktop theme label (tooltip only, not inline) */
 .theme-label-text {
     display: none;
 }
@@ -454,6 +451,15 @@ button {
     position: absolute;
     bottom: 0;
     right: 0;
+}
+
+/* Desktop: hide mobile-only avatar info */
+.avatar-user-info {
+    display: none;
+}
+
+.avatar-chevron {
+    display: none;
 }
 
 .profile-dropdown {
@@ -1215,12 +1221,27 @@ button {
     color: var(--text-grey);
 }
 
+/* ─────────────────────────────────────────
+   CHAT VIEW
+   KEY FIX: display must be set to flex
+   when visible — we override .hidden removal
+   in JS. Using display:flex here so that
+   when JS removes .hidden the element
+   correctly becomes a flex column.
+───────────────────────────────────────── */
 .chat-view {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
+    overflow: hidden;
     animation: fadeUp .25s ease;
 }
+
+/* When .hidden is removed via JS (chatView.classList.remove('hidden')),
+   the element reverts to display:flex from this rule. But if JS also sets
+   chatView.style.display = 'flex', that inline style takes precedence —
+   both paths are safe. */
 
 /* Chat Header */
 .chat-header {
@@ -1475,16 +1496,21 @@ button {
     white-space: nowrap;
 }
 
-/* Messages Area */
+/* ─────────────────────────────────────────
+   MESSAGES AREA
+   flex:1 + min-height:0 = scrollable region
+───────────────────────────────────────── */
 .messages-area {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 18px 20px 10px;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    /* FIX 2: Ensure messages area doesn't overflow and push input off screen */
-    min-height: 0;
+    /* Ensure overscroll doesn't cause bounce on iOS */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
 }
 
 .date-divider {
@@ -2041,7 +2067,13 @@ button {
     color: var(--primary);
 }
 
-/* ─── FIX 2: Input Bar — must always be visible, never pushed off screen ─── */
+/* ─────────────────────────────────────────
+   INPUT BAR
+   KEY FIX: flex-shrink:0 keeps it always
+   visible at the bottom of chat-view.
+   NO position:sticky or position:absolute —
+   the flex column layout handles it cleanly.
+───────────────────────────────────────── */
 .input-bar {
     display: flex;
     align-items: center;
@@ -2051,9 +2083,10 @@ button {
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     transition: background .25s;
-    /* Ensure it stays at the bottom */
     position: relative;
     z-index: 5;
+    /* Safe area for iOS home bar */
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
 }
 
 .input-wrap {
@@ -2908,15 +2941,41 @@ button {
 
 /* ═══════════════════════════════════════
    RESPONSIVE — MOBILE (≤ 768px)
+
+   ARCHITECTURE:
+   ┌──────────────────────────────────────┐
+   │ .mobile-topbar  (position:fixed)     │
+   ├──────────────────────────────────────┤
+   │ .contacts-panel (position:fixed)     │  ← slides out on chat open
+   │  OR                                  │
+   │ .chat-main      (position:fixed)     │  ← fills viewport below topbar
+   │   ├─ .chat-view (flex col, h:100%)   │
+   │   │   ├─ .chat-header  (shrink:0)    │
+   │   │   ├─ .messages-area (flex:1)     │
+   │   │   ├─ .typing-row   (shrink:0)    │
+   │   │   ├─ .emoji-panel  (shrink:0)    │
+   │   │   └─ .input-bar    (shrink:0)    │  ← ALWAYS visible
+   └──────────────────────────────────────┘
+
+   KEY RULES:
+   1. .chat-main uses position:fixed with explicit top/bottom — NO height:100vh
+   2. .chat-view uses height:100% (not dvh) and display:flex — it fills the fixed parent
+   3. .input-bar has flex-shrink:0 — it never gets pushed off
+   4. .messages-area has flex:1 + min-height:0 — it absorbs all remaining space
+   5. NO overflow:hidden on body — prevents keyboard resize issues
 ═══════════════════════════════════════ */
 @media (max-width: 768px) {
     :root {
         --sidebar-w: 0px;
     }
 
+    /* ── Step 1: Remove body overflow:hidden on mobile
+       This is critical — overflow:hidden on body prevents the browser
+       from resizing the layout when the soft keyboard opens.
+       Instead we use position:fixed on chat-main to contain the layout. ── */
     body {
         flex-direction: column;
-        overflow: hidden;
+        /* Do NOT set overflow:hidden here — it breaks keyboard behavior */
     }
 
     /* ── Sidebar drawer ── */
@@ -2940,7 +2999,6 @@ button {
         transform: translateX(0);
     }
 
-    /* Top logo row */
     .sidebar-logo {
         margin: 16px 16px 8px;
         width: 48px;
@@ -2948,7 +3006,6 @@ button {
         flex-shrink: 0;
     }
 
-    /* Nav items full-width */
     .nav-item {
         width: calc(100% - 16px);
         margin: 0 8px;
@@ -3002,10 +3059,7 @@ button {
         display: flex;
     }
 
-    /* ═══════════════════════════════
-       FIX 3: MOBILE SIDEBAR FOOTER
-       Clean layout: Theme row, Settings row, Profile card
-    ═══════════════════════════════ */
+    /* ── Mobile Sidebar Footer ── */
     .sidebar-footer {
         width: 100%;
         padding: 0;
@@ -3018,7 +3072,6 @@ button {
         background: var(--sidebar-bg);
     }
 
-    /* ─── FIX 1: Theme toggle row in mobile — show icon + dynamic label ─── */
     .sidebar-icon-btn {
         width: 100%;
         height: 50px;
@@ -3031,7 +3084,6 @@ button {
         flex-direction: row;
     }
 
-    /* Show the label text ONLY on mobile */
     .theme-label-text {
         display: block;
         font-size: 14px;
@@ -3050,7 +3102,6 @@ button {
         color: white;
     }
 
-    /* Settings as full-width row */
     .sidebar-settings-item {
         width: 100%;
         min-height: 50px;
@@ -3080,7 +3131,7 @@ button {
         color: rgba(255,255,255,0.95) !important;
     }
 
-    /* ─── FIX 3: Profile card at bottom — clean layout ─── */
+    /* Profile card at bottom of sidebar */
     .sidebar-avatar-wrap {
         display: flex;
         align-items: center;
@@ -3100,7 +3151,6 @@ button {
         border-width: 2px;
     }
 
-    /* User info beside avatar */
     .avatar-user-info {
         flex: 1;
         min-width: 0;
@@ -3128,8 +3178,8 @@ button {
         line-height: 1.3;
     }
 
-    /* Chevron icon */
     .avatar-chevron {
+        display: block;
         color: rgba(255,255,255,0.45);
         font-size: 16px;
         flex-shrink: 0;
@@ -3140,7 +3190,6 @@ button {
         transform: rotate(180deg);
     }
 
-    /* Online dot repositioned */
     .presence-dot {
         width: 10px;
         height: 10px;
@@ -3149,7 +3198,6 @@ button {
         left: 44px;
     }
 
-    /* Profile dropdown on mobile */
     .profile-dropdown {
         position: absolute;
         bottom: calc(100% + 4px);
@@ -3158,17 +3206,12 @@ button {
         min-width: unset;
     }
 
-    /* Mobile top bar */
+    /* Mobile topbar */
     .mobile-topbar {
         display: flex;
     }
 
-    .contacts-panel,
-    .chat-main {
-        margin-top: var(--topbar-h);
-        height: calc(100vh - var(--topbar-h));
-    }
-
+    /* ── Contacts panel: full-screen, slides left when chat opens ── */
     .contacts-panel {
         position: fixed;
         top: var(--topbar-h);
@@ -3179,25 +3222,37 @@ button {
         z-index: 10;
         transition: transform .3s cubic-bezier(.4, 0, .2, 1), background .25s;
         border-right: none;
+        /* No margin-top needed — position:fixed already handles top offset */
     }
 
-    /* ─── FIX 2: Chat main and chat-view on mobile ─── */
+    /* ── CHAT MAIN: THE KEY FIX ──────────────────────────────────────────
+       Use position:fixed with explicit top and bottom (NOT height).
+       This creates a container that:
+       - Starts below the topbar
+       - Ends at the bottom of the visual viewport
+       - Automatically shrinks when the soft keyboard opens (on Android)
+         because the browser repositions the fixed element's bottom edge
+       
+       DO NOT use height:100vh or height:100dvh here.
+       DO NOT use overflow:hidden on body.
+    ──────────────────────────────────────────────────────────────────── */
     .chat-main {
         position: fixed;
         top: var(--topbar-h);
         left: 0;
         right: 0;
         bottom: 0;
-        width: 100%;
-        z-index: 11;
-        transform: translateX(100%);
-        transition: transform .3s cubic-bezier(.4, 0, .2, 1), background .25s;
-        /* Flex column so input bar stays at bottom */
+        /* flex column so chat-view fills the space */
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        /* translate off-screen initially; slides in when chat is active */
+        transform: translateX(100%);
+        transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+        z-index: 10;
     }
 
+    /* When a chat is opened, slide chat-main into view */
     body.chat-active .contacts-panel {
         transform: translateX(-100%);
     }
@@ -3206,64 +3261,87 @@ button {
         transform: translateX(0);
     }
 
-    /* Ensure chat-view fills the whole chat-main and input stays visible */
+    /* ── CHAT VIEW: fills its fixed parent completely ────────────────────
+       height:100% fills the position:fixed .chat-main.
+       display:flex + flex-direction:column creates the three-region layout:
+         [header] [messages - grows] [input bar]
+    ──────────────────────────────────────────────────────────────────── */
     .chat-view {
-        display: flex;
+        display: flex;            /* override .hidden when shown */
         flex-direction: column;
-        flex: 1;
-        min-height: 0;
-        height: 100%;
+        height: 100%;             /* fill the fixed .chat-main */
+        min-height: 0;            /* allow flex children to shrink */
         overflow: hidden;
+        animation: fadeUp .25s ease;
     }
 
-    /* Messages area scrolls, input stays fixed at bottom */
+    /* ── MESSAGES AREA: the scrollable flex region ────────────────────────
+       flex:1 makes it take all space not used by header/input.
+       min-height:0 is required — without it, a flex child with overflow
+       refuses to shrink below its content height (a common flex gotcha).
+    ──────────────────────────────────────────────────────────────────── */
     .messages-area {
         flex: 1;
-        min-height: 0;
+        min-height: 0;            /* REQUIRED for flex overflow scroll */
         overflow-y: auto;
-        padding: 12px 14px 8px;
+        padding: 10px 14px 8px;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
     }
 
-    /* Input bar always visible at bottom */
+    /* ── INPUT BAR: always pinned at bottom ──────────────────────────────
+       flex-shrink:0 prevents it from being compressed.
+       padding-bottom uses env() to handle iPhone home-bar safe area.
+       NO position:sticky — let the flex column handle it.
+    ──────────────────────────────────────────────────────────────────── */
     .input-bar {
         flex-shrink: 0;
         padding: 10px 12px;
-        gap: 6px;
-        /* Safe area for phones with home indicator */
-        padding-bottom: max(10px, env(safe-area-inset-bottom));
+        /* iPhone safe area inset — falls back to 10px if not supported */
+        padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+        /* Ensure it's above any floating UI */
+        position: relative;
+        z-index: 10;
     }
 
-    /* Emoji panel flex-shrink so it doesn't push input off screen */
+    /* Emoji panel — cap height so it doesn't push input off screen */
     .emoji-panel {
         flex-shrink: 0;
         max-height: 220px;
+        overflow: hidden;
     }
 
     .emoji-content {
         height: 130px;
     }
 
+    /* Typing row stays at bottom of message stream */
     .typing-row {
         padding: 4px 14px 6px;
         flex-shrink: 0;
     }
 
+    /* Show back button in chat header */
     .chat-back-btn {
         display: flex;
     }
 
+    /* Hide call/video buttons to save header space */
     .ch-action-hide-sm {
         display: none;
     }
 
+    /* Wider messages on small screens */
     .msg-row {
         max-width: 86%;
     }
 
+    /* Select bar spans full width on mobile */
     .select-bar {
         left: 0;
     }
 
+    /* Toast at bottom-left on mobile */
     #toastContainer {
         left: 16px;
         right: 16px;
@@ -3284,10 +3362,12 @@ button {
         left: 8px;
     }
 
+    /* No tooltips on touch devices */
     .tooltip-wrap::after {
         display: none;
     }
 
+    /* Groups panel offset on mobile */
     .groups-panel {
         left: 0;
         top: var(--topbar-h);
@@ -3297,7 +3377,7 @@ button {
 }
 
 /* ═══════════════════════════════════════
-   RESPONSIVE — MOBILE (≤ 480px)
+   RESPONSIVE — SMALL MOBILE (≤ 480px)
 ═══════════════════════════════════════ */
 @media (max-width: 480px) {
     :root {
@@ -3319,7 +3399,7 @@ button {
 
     .input-bar {
         padding: 8px 10px;
-        padding-bottom: max(8px, env(safe-area-inset-bottom));
+        padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
         gap: 6px;
     }
 
@@ -3338,6 +3418,7 @@ button {
         min-width: 190px;
     }
 
+    /* Modals slide up from bottom on very small screens */
     .modal-overlay {
         align-items: flex-end;
         padding: 0;
