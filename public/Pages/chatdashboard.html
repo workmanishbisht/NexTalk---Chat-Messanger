@@ -100,7 +100,6 @@
 
         <!-- SIDEBAR FOOTER -->
         <div class="sidebar-footer">
-            <!-- FIX 1: Theme toggle with dynamic label text (visible on mobile) -->
             <button class="sidebar-icon-btn tooltip-wrap" data-tip="Toggle Theme" id="themeToggleBtn">
                 <i class="ri-moon-line" id="themeIcon"></i>
                 <span class="theme-label-text" id="themeLabelText">Dark Mode</span>
@@ -113,23 +112,21 @@
                 </a>
             </div>
 
-            <!-- FIX 3: Profile card with name + email + chevron -->
             <div class="sidebar-avatar-wrap tooltip-wrap" data-tip="My Profile" id="avatarWrap">
                 <div class="sidebar-avatar" id="sidebarAvatar"></div>
                 <span class="presence-dot"></span>
-                <!-- User info (visible on mobile) -->
                 <div class="avatar-user-info">
                     <div class="avatar-name" id="avatarName"></div>
                     <div class="avatar-email" id="avatarEmail"></div>
                 </div>
-                <!-- Chevron (mobile only) -->
                 <i class="ri-arrow-up-s-line avatar-chevron" id="avatarChevron"></i>
 
                 <div class="profile-dropdown" id="profileDropdown">
                     <div class="pd-user" id="pdUser"></div>
                     <hr class="pd-divider">
                     <button class="pd-item" id="pdProfile"><i class="ri-user-line"></i> My Profile</button>
-                    <button class="pd-item pd-logout" id="pdLogout"><i class="ri-logout-circle-r-line"></i> Log Out</button>
+                    <button class="pd-item pd-logout" id="pdLogout"><i class="ri-logout-circle-r-line"></i> Log
+                        Out</button>
                 </div>
             </div>
         </div>
@@ -254,7 +251,6 @@
                 <div class="emoji-content" id="emojiContent"></div>
             </div>
 
-            <!-- FIX 2: Input bar is inside chat-view, stays at bottom via flex layout -->
             <div class="input-bar">
                 <div class="attach-wrap">
                     <button class="icon-btn attach-btn" id="attachBtn" title="Attach">
@@ -364,15 +360,21 @@
             </div>
             <div style="padding: 16px 18px; display:flex; flex-direction:column; gap:12px;">
                 <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group Name *</label>
-                    <input type="text" id="groupNameInput" placeholder="Enter group name…" class="nick-input" maxlength="60" />
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group
+                        Name *</label>
+                    <input type="text" id="groupNameInput" placeholder="Enter group name…" class="nick-input"
+                        maxlength="60" />
                 </div>
                 <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Description</label>
-                    <input type="text" id="groupDescInput" placeholder="Short description (optional)…" class="nick-input" maxlength="100" />
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Description</label>
+                    <input type="text" id="groupDescInput" placeholder="Short description (optional)…"
+                        class="nick-input" maxlength="100" />
                 </div>
                 <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Icon</label>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Icon</label>
                     <div class="group-icon-picker" id="groupIconPicker">
                         <span class="gip-item active" data-icon="💬">💬</span>
                         <span class="gip-item" data-icon="🎮">🎮</span>
@@ -389,10 +391,13 @@
                     </div>
                 </div>
                 <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add Members</label>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add
+                        Members</label>
                     <div class="modal-search-wrap" style="margin:0 0 8px;">
                         <i class="ri-search-line"></i>
-                        <input type="text" id="groupMemberSearch" placeholder="Search users to add…" autocomplete="off" />
+                        <input type="text" id="groupMemberSearch" placeholder="Search users to add…"
+                            autocomplete="off" />
                     </div>
                     <div class="selected-members-wrap" id="selectedMembersWrap"></div>
                     <ul class="modal-user-list group-member-list" id="groupMemberList" style="max-height:180px;"></ul>
@@ -414,24 +419,32 @@
             </div>
             <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
                 <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group Name</label>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Group
+                        Name</label>
                     <input type="text" id="gsGroupName" class="nick-input" placeholder="Group name…" />
                 </div>
                 <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Members</label>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Members</label>
                     <ul class="modal-user-list" id="gsGroupMembersList"
-                        style="max-height:220px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;"></ul>
+                        style="max-height:220px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;">
+                    </ul>
                 </div>
                 <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add More Members</label>
+                    <label
+                        style="font-size:12px;font-weight:600;color:var(--text-grey);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Add
+                        More Members</label>
                     <div class="modal-search-wrap" style="margin:0 0 6px;">
                         <i class="ri-search-line"></i>
                         <input type="text" id="gsAddMemberSearch" placeholder="Search users…" />
                     </div>
                     <ul class="modal-user-list" id="gsAddMemberList"
-                        style="max-height:140px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;"></ul>
+                        style="max-height:140px;border:1px solid var(--border);border-radius:var(--radius-md);overflow-y:auto;">
+                    </ul>
                 </div>
-                <button class="btn-secondary" id="gsDeleteGroup" style="color:var(--error);border-color:var(--error);margin-top:4px;">
+                <button class="btn-secondary" id="gsDeleteGroup"
+                    style="color:var(--error);border-color:var(--error);margin-top:4px;">
                     <i class="ri-delete-bin-line"></i> Delete Group
                 </button>
             </div>
