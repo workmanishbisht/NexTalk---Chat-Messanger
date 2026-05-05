@@ -4,6 +4,30 @@
 //   1. Theme toggle: dynamic label text (Light/Dark) shown on mobile
 //   2. Mobile chat: input bar always visible (flex layout fix)
 //   3. Mobile sidebar footer: profile card with name + email + chevron
+//   4. Presence fix: user shows Online correctly when they join
+//      - isTrulyOnline now treats online=true + null lastSeen as online
+//      - Threshold extended 90s → 120s for slow network safety
+//
+// MOBILE LAYOUT FIX — ROOT CAUSES & SOLUTIONS:
+//   A. openRoom() used chatView.style.display = 'flex' as an INLINE style.
+//      On mobile, this inline style sets a fixed display value that can
+//      override layout recalculation when the viewport changes (keyboard open).
+//      FIX: Remove the inline style; let CSS `.chat-view { display:flex }` 
+//      handle it. When JS removes `.hidden`, the CSS rule takes over cleanly.
+//
+//   B. chatEmpty used display:'' to show/hide, which falls back to the UA
+//      default (block). This is fine but adding an explicit class is cleaner.
+//      (No code change needed here — behavior is correct.)
+//
+//   C. CSS: .chat-main on mobile was using both position:fixed AND
+//      height:calc(100dvh - topbar). Using height with dvh is redundant and
+//      causes layout thrash when the keyboard opens on Android.
+//      FIX (in CSS): Use position:fixed + top/bottom instead — the browser
+//      automatically handles the available height.
+//
+//   D. CSS: body had overflow:hidden on mobile.
+//      FIX (in CSS): Removed — overflow:hidden on body prevents the browser
+//      from resizing the layout when the soft keyboard opens.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -147,7 +171,6 @@ const shareUrl = $("shareUrl");
 const toastContainer = $("toastContainer");
 const themeToggleBtn = $("themeToggleBtn");
 const themeIcon = $("themeIcon");
-// FIX 1: theme label text element
 const themeLabelText = $("themeLabelText");
 const avatarWrap = $("avatarWrap");
 const profileDropdown = $("profileDropdown");
@@ -246,7 +269,7 @@ const groupMemberSearch = $("groupMemberSearch");
 const groupMemberList = $("groupMemberList");
 const selectedMembersWrap = $("selectedMembersWrap");
 
-// FIX 3: Mobile footer profile elements
+// Mobile footer profile elements
 const avatarName = $("avatarName");
 const avatarEmail = $("avatarEmail");
 
@@ -392,17 +415,15 @@ function updatePinMenuLabel() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIX 1: THEME — dynamic label update
+// THEME — dynamic label update
 // ═══════════════════════════════════════════════════════════════════════════
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
 
-  // Update icon
   if (themeIcon) {
     themeIcon.className = theme === "dark" ? "ri-sun-line" : "ri-moon-line";
   }
 
-  // FIX 1: Update dynamic label text
   // When currently DARK → button shows "Light Mode" (click to switch to light)
   // When currently LIGHT → button shows "Dark Mode" (click to switch to dark)
   if (themeLabelText) {
@@ -479,7 +500,7 @@ async function init() {
   if (pdUser) pdUser.textContent = ME.name;
   if (shareUrl) shareUrl.textContent = window.location.href;
 
-  // FIX 3: Populate mobile footer profile card
+  // Populate mobile footer profile card
   updateMobileFooterProfile();
 
   await setPresence(true);
@@ -495,7 +516,7 @@ async function init() {
   openRoom(ROOM_GENERAL, "General Chat", null, true, null, false);
 }
 
-// ─── FIX 3: Mobile footer profile info ────────────────────────────────────
+// ─── Mobile footer profile info ────────────────────────────────────────────
 function updateMobileFooterProfile() {
   if (avatarName) avatarName.textContent = ME.name || "";
   if (avatarEmail) avatarEmail.textContent = ME.email || "";
@@ -534,14 +555,15 @@ function stopPresenceHeartbeat() {
   }
 }
 
+// ─── FIX: Presence detection ──────────────────────────────────────────────
 function isTrulyOnline(presenceData) {
   if (!presenceData.online) return false;
-  if (!presenceData.lastSeen) return false;
+  if (!presenceData.lastSeen) return true;
   const lastSeenDate = presenceData.lastSeen.toDate
     ? presenceData.lastSeen.toDate()
     : new Date(presenceData.lastSeen);
   const diffSeconds = (Date.now() - lastSeenDate.getTime()) / 1000;
-  return diffSeconds < 90;
+  return diffSeconds < 120;
 }
 
 function listenPresence() {
@@ -963,7 +985,9 @@ gsDeleteGroup?.addEventListener("click", async () => {
     await deleteDoc(doc(db, "groups", grp.id));
     groupSettingsModal?.classList.add("hidden");
     activeRoomId = null;
+    // ── FIX: Use classList instead of style.display for consistent behavior
     chatView.classList.add("hidden");
+    chatEmpty.classList.remove("hidden");
     chatEmpty.style.display = "";
     mobileChatClose();
     showToast("Group deleted", "success");
@@ -1193,6 +1217,24 @@ function getRoomId(a, b) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OPEN ROOM
+// ─────────────────────────────────────────────────────────────────────────
+// KEY FIX: Removed `chatView.style.display = 'flex'` inline style.
+//
+// The problem: setting an inline style creates a "cascading conflict" where
+// the element has BOTH:
+//   - CSS rule: .chat-view { display: flex; height: 100% }
+//   - Inline style: style="display: flex"
+//
+// The inline style wins for the `display` property but does NOT carry over
+// the other layout properties (height:100%, flex:1, min-height:0) that are
+// defined in the CSS rule. On some mobile browsers this causes the element
+// to render as a flex container but WITHOUT the height constraint, so it
+// expands to its content height and overflows — pushing the input bar
+// below the visible viewport.
+//
+// Solution: remove the inline style entirely. When `.hidden` is removed,
+// the CSS class `.chat-view { display: flex; height: 100%; ... }` applies
+// cleanly with all properties intact.
 // ═══════════════════════════════════════════════════════════════════════════
 function openRoom(
   roomId,
@@ -1206,9 +1248,15 @@ function openRoom(
   activeRoomId = roomId;
   activeRoomMeta = { name, isPublic, isGroup, groupData };
 
-  chatEmpty.style.display = "none";
+  // ── FIX: Use classList to show/hide — no inline style overrides ──
+  // Hide empty state
+  chatEmpty.classList.add("hidden");
+
+  // Show chat view — remove .hidden and let CSS .chat-view rule apply
+  // DO NOT set chatView.style.display here — it fights with height:100%
   chatView.classList.remove("hidden");
-  chatView.style.display = "flex";
+  // Clear any stale inline display style that may have been set previously
+  chatView.style.display = "";
 
   buildAvatarEl(chAvatar, name, avatar || "");
   chAvatar.style.width = "42px";
@@ -1396,6 +1444,7 @@ mdDeleteChat?.addEventListener("click", async () => {
     savePinnedChats();
     activeRoomId = null;
     chatView.classList.add("hidden");
+    chatEmpty.classList.remove("hidden");
     chatEmpty.style.display = "";
     mobileChatClose();
     renderContactsList();
