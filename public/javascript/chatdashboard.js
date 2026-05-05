@@ -1,34 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // chatdashboard.js — NexTalk
-// FIXES:
-//   1. Theme toggle: dynamic label text (Light/Dark) shown on mobile
-//   2. Mobile chat: input bar always visible (flex layout fix)
-//   3. Mobile sidebar footer: profile card with name + email + chevron
-//   4. Presence fix: user shows Online correctly when they join
-//      - isTrulyOnline now treats online=true + null lastSeen as online
-//      - Threshold extended 90s → 120s for slow network safety
-//
-// MOBILE LAYOUT FIX — ROOT CAUSES & SOLUTIONS:
-//   A. openRoom() used chatView.style.display = 'flex' as an INLINE style.
-//      On mobile, this inline style sets a fixed display value that can
-//      override layout recalculation when the viewport changes (keyboard open).
-//      FIX: Remove the inline style; let CSS `.chat-view { display:flex }` 
-//      handle it. When JS removes `.hidden`, the CSS rule takes over cleanly.
-//
-//   B. chatEmpty used display:'' to show/hide, which falls back to the UA
-//      default (block). This is fine but adding an explicit class is cleaner.
-//      (No code change needed here — behavior is correct.)
-//
-//   C. CSS: .chat-main on mobile was using both position:fixed AND
-//      height:calc(100dvh - topbar). Using height with dvh is redundant and
-//      causes layout thrash when the keyboard opens on Android.
-//      FIX (in CSS): Use position:fixed + top/bottom instead — the browser
-//      automatically handles the available height.
-//
-//   D. CSS: body had overflow:hidden on mobile.
-//      FIX (in CSS): Removed — overflow:hidden on body prevents the browser
-//      from resizing the layout when the soft keyboard opens.
-// ═══════════════════════════════════════════════════════════════════════════
+══════════════════════════════════════════════════════════════════════════
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
