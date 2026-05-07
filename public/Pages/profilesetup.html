@@ -5,9 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NexTalk - Profile Setup</title>
-     <!-- Favicon -->
     <link rel="icon" type="image/png" href="../Assets/FavIcon/favicon.png">
-    <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/profilesetup.css">
 </head>
@@ -17,7 +15,6 @@
     <div id="toastContainer"></div>
 
     <div class="setup-wrapper" id="setupWrapper">
-
         <div class="progress-bar-wrap">
             <div class="progress-meta">
                 <span>Step 1 of 1</span>
@@ -29,12 +26,12 @@
         </div>
 
         <div class="setup-card">
-
             <div class="card-header">
                 <h1>Complete Your Profile</h1>
                 <p>Set up your profile to start chatting</p>
             </div>
 
+            <!-- Avatar -->
             <div class="avatar-wrap">
                 <div class="avatar-ring">
                     <img id="avatarPreview" src="" alt="Avatar">
@@ -42,42 +39,201 @@
                         <i class="ri-user-3-line"></i>
                     </div>
                 </div>
-                <label class="avatar-upload-btn" for="avatarInput">
+                <label class="avatar-upload-btn" for="avatarInput" title="Upload photo">
                     <i class="ri-camera-fill"></i>
                 </label>
                 <input type="file" id="avatarInput" accept="image/*" hidden>
             </div>
 
             <div class="form-body">
+
+                <!-- Full Name -->
                 <div class="form-group">
-                    <label>Full Name</label>
+                    <label>Full Name <span class="req">*</span></label>
                     <div class="input-box">
                         <i class="ri-user-smile-line"></i>
-                        <input type="text" id="fullName" placeholder="John Doe">
+                        <input type="text" id="fullName" placeholder="John Doe" maxlength="60" autocomplete="name">
                     </div>
                     <span class="field-error" id="nameErr"></span>
                 </div>
 
+                <!-- Status -->
                 <div class="form-group">
                     <label>Status</label>
                     <div class="input-box">
                         <i class="ri-chat-smile-2-line"></i>
-                        <input type="text" id="statusText" placeholder="Hey there! I'm using NexTalk">
+                        <input type="text" id="statusText" placeholder="Hey there! I'm using NexTalk" maxlength="100">
                     </div>
                 </div>
-            </div>
+
+                <!-- Phone + Email row -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Phone <span class="opt">(Optional)</span></label>
+                        <div class="phone-wrap">
+                            <div class="country-select-wrap">
+                                <select id="countryCode">
+                                    <option value="+91">🇮🇳 +91</option>
+                                    <option value="+1">🇺🇸 +1</option>
+                                    <option value="+44">🇬🇧 +44</option>
+                                    <option value="+61">🇦🇺 +61</option>
+                                    <option value="+81">🇯🇵 +81</option>
+                                    <option value="+86">🇨🇳 +86</option>
+                                    <option value="+49">🇩🇪 +49</option>
+                                    <option value="+33">🇫🇷 +33</option>
+                                    <option value="+55">🇧🇷 +55</option>
+                                    <option value="+7">🇷🇺 +7</option>
+                                    <option value="+971">🇦🇪 +971</option>
+                                    <option value="+65">🇸🇬 +65</option>
+                                </select>
+                            </div>
+                            <div class="phone-input">
+                                <div class="input-box">
+                                    <i class="ri-phone-line"></i>
+                                    <input type="tel" id="phoneNumber" placeholder="98765 43210" maxlength="15">
+                                </div>
+                            </div>
+                        </div>
+                        <span class="field-error" id="phoneErr"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Email <span class="opt">(Optional)</span></label>
+                        <div class="input-box">
+                            <i class="ri-mail-line"></i>
+                            <input type="email" id="emailInput" placeholder="john@example.com" autocomplete="email">
+                        </div>
+                        <span class="field-error" id="emailErr"></span>
+                    </div>
+                </div>
+
+                <!-- DOB + Gender row -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date of Birth <span class="opt">(Optional)</span></label>
+                        <div class="input-box">
+                            <i class="ri-calendar-line"></i>
+                            <input type="date" id="dobInput">
+                        </div>
+                        <span class="field-error" id="dobErr"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Gender <span class="opt">(Optional)</span></label>
+                        <div class="gender-group">
+                            <button type="button" class="gender-btn" data-gender="Male">
+                                <i class="ri-men-line"></i> Male
+                            </button>
+                            <button type="button" class="gender-btn" data-gender="Female">
+                                <i class="ri-women-line"></i> Female
+                            </button>
+                            <button type="button" class="gender-btn" data-gender="Other" title="Prefer not to say">
+                                <i class="ri-question-line"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Location -->
+                <div class="form-group">
+                    <label>Location <span class="opt">(Optional)</span></label>
+                    <div class="location-section" id="locationSection">
+
+                        <!-- Detect / Manual buttons -->
+                        <div class="location-options" id="locationOptions">
+                            <button type="button" class="location-opt-btn detect-btn" id="detectLocationBtn">
+                                <i class="ri-crosshair-2-line"></i>
+                                <div>
+                                    <span class="loc-btn-title">Detect my location</span>
+                                    <span class="loc-btn-sub">Let NexTalk detect your location</span>
+                                </div>
+                            </button>
+                            <span class="loc-or">OR</span>
+                            <button type="button" class="location-opt-btn manual-btn" id="manualLocationBtn">
+                                <i class="ri-map-pin-line"></i>
+                                <div>
+                                    <span class="loc-btn-title">Enter manually</span>
+                                    <span class="loc-btn-sub">Search and select your location</span>
+                                </div>
+                            </button>
+                        </div>
+
+                        <!-- Detected result bar -->
+                        <div class="location-result" id="locationResult" style="display:none;">
+                            <div class="location-result-inner">
+                                <i class="ri-checkbox-circle-fill loc-check-icon"></i>
+                                <div class="loc-result-text">
+                                    <span class="loc-result-name" id="locationDisplay">Detecting…</span>
+                                    <span class="loc-result-sub">Your location will help people find and connect with you.</span>
+                                </div>
+                            </div>
+                            <button type="button" class="loc-change-btn" id="changeLocationBtn">Change</button>
+                        </div>
+
+                        <!-- Manual input (hidden by default) -->
+                        <div class="location-manual-wrap" id="locationManualWrap" style="display:none;">
+                            <div class="input-box">
+                                <i class="ri-search-line"></i>
+                                <input type="text" id="locationManualInput" placeholder="e.g. New Delhi, India" maxlength="100" autocomplete="off">
+                                <button type="button" class="loc-manual-confirm" id="locManualConfirmBtn" title="Confirm location">
+                                    <i class="ri-check-line"></i>
+                                </button>
+                            </div>
+                            <span class="field-error" id="locationErr"></span>
+                        </div>
+
+                        <!-- Detecting spinner -->
+                        <div class="location-detecting" id="locationDetecting" style="display:none;">
+                            <span class="loc-spinner"></span>
+                            <span>Detecting your location…</span>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Interests -->
+                <div class="form-group">
+                    <label>Interests <span class="opt">(Optional)</span></label>
+                    <div class="interests-wrap" id="interestsWrap">
+                        <span class="interests-placeholder" id="interestsPlaceholder">Select your interests…</span>
+                        <i class="ri-arrow-down-s-line interests-chevron" id="interestsChevron"></i>
+                        <div class="interests-dropdown" id="interestsDropdown">
+                            <div class="interest-option" data-val="Technology"><i class="ri-code-s-slash-line"></i> Tech</div>
+                            <div class="interest-option" data-val="Music"><i class="ri-music-2-line"></i> Music</div>
+                            <div class="interest-option" data-val="Travel"><i class="ri-plane-line"></i> Travel</div>
+                            <div class="interest-option" data-val="Sports"><i class="ri-football-line"></i> Sports</div>
+                            <div class="interest-option" data-val="Gaming"><i class="ri-gamepad-line"></i> Gaming</div>
+                            <div class="interest-option" data-val="Art"><i class="ri-brush-line"></i> Art</div>
+                            <div class="interest-option" data-val="Food"><i class="ri-restaurant-line"></i> Food</div>
+                            <div class="interest-option" data-val="Books"><i class="ri-book-open-line"></i> Books</div>
+                            <div class="interest-option" data-val="Movies"><i class="ri-movie-2-line"></i> Movies</div>
+                            <div class="interest-option" data-val="Fitness"><i class="ri-heart-pulse-line"></i> Fitness</div>
+                            <div class="interest-option" data-val="Science"><i class="ri-flask-line"></i> Science</div>
+                            <div class="interest-option" data-val="Finance"><i class="ri-money-dollar-circle-line"></i> Finance</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /form-body -->
 
             <div class="card-actions">
                 <button class="btn-continue" id="continueBtn">Continue</button>
                 <button class="btn-skip" id="skipBtn">Skip for now</button>
             </div>
-
         </div>
     </div>
 
-    <!-- script file here -->
+    <!-- Location Permission Modal -->
+    <div class="modal-overlay" id="locationPermModal" style="display:none;">
+        <div class="modal-box">
+            <div class="modal-icon"><i class="ri-map-pin-2-line"></i></div>
+            <h3>Allow Location Access?</h3>
+            <p>NexTalk wants to detect your current location to help you connect with people nearby. Your location will only be stored in your profile.</p>
+            <div class="modal-actions">
+                <button class="modal-btn-allow" id="modalAllowBtn"><i class="ri-check-line"></i> Allow</button>
+                <button class="modal-btn-deny" id="modalDenyBtn">Deny</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="../javascript/profilesetup.js"></script>
-
 </body>
-
 </html>
