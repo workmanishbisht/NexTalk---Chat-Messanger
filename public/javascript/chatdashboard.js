@@ -1,5 +1,5 @@
+// chatdashboard.js — Fixed: Duplicate DM rooms + Firebase Storage image upload
 
-// chatdashboard.js — NexTalk
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getAuth,
@@ -21,14 +21,23 @@ import {
   serverTimestamp,
   where,
   getDocs,
+  limit,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// ─── Firebase Config ──────────────────────────────────────────────────────────
+// ✅ FIX 3: Firebase Storage import add kiya
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
 const firebaseConfig = {
   apiKey: "AIzaSyCJea9IVCNXyeUKCpO_Jhbg-s-PeGoWyDc",
   authDomain: "nextalk-34dad.firebaseapp.com",
   projectId: "nextalk-34dad",
-  storageBucket: "nextalk-34dad.firebasestorage.app",
+  // ✅ FIX 6: Correct storageBucket URL (appspot.com format)
+  storageBucket: "nextalk-34dad.appspot.com",
   messagingSenderId: "730298460453",
   appId: "1:730298460453:web:c69d16bd96e14876a4d2cc",
 };
@@ -36,16 +45,14 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
 const db = getFirestore(fbApp);
+// ✅ FIX 3: Storage instance initialize kiya
+const storage = getStorage(fbApp);
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let ME = null;
+let existingDmRooms = [];
 let activeRoomId = null;
-let activeRoomMeta = {
-  name: "",
-  isPublic: false,
-  isGroup: false,
-  groupData: null,
-};
+let activeRoomMeta = { name: "", isPublic: false, isGroup: false, groupData: null };
 let msgUnsub = null;
 let typingUnsub = null;
 let presenceUnsub = null;
@@ -63,21 +70,11 @@ let moreDropdownOpen = false;
 let selectMode = false;
 let selectedMsgIds = new Set();
 let favouriteChats = new Set();
-
-// Group create state
 let groupSelectedMembers = new Map();
 let selectedGroupIcon = "💬";
 
 const ROOM_GENERAL = "general";
-const COLORS = [
-  "#008080",
-  "#0e9f6e",
-  "#0ea5e9",
-  "#7c3aed",
-  "#db2777",
-  "#ea580c",
-  "#0891b2",
-];
+const COLORS = ["#008080", "#0e9f6e", "#0ea5e9", "#7c3aed", "#db2777", "#ea580c", "#0891b2"];
 
 function colorFor(str) {
   let h = 0;
@@ -85,7 +82,6 @@ function colorFor(str) {
   return COLORS[Math.abs(h) % COLORS.length];
 }
 
-// ─── Emoji & Sticker Data ─────────────────────────────────────────────────────
 const EMOJIS = [
   "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍",
   "🤩", "😘", "😗", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫",
@@ -112,7 +108,6 @@ const STICKERS = [
   "🎮", "⚽", "🏀", "🎸", "🎵", "🎨", "🚀",
 ];
 
-// ─── DOM ──────────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 
 const sidebarAvatar = $("sidebarAvatar");
@@ -131,20 +126,28 @@ const typingRow = $("typingRow");
 const typingAv = $("typingAv");
 const msgInput = $("msgInput");
 const sendBtn = $("sendBtn");
+
 const ipAvatar = $("ipAvatar");
 const ipName = $("ipName");
+const ipUsername = $("ipUsername");
+const ipAbout = $("ipAbout");
+const ipEmail = $("ipEmail");
+const ipPhone = $("ipPhone");
+const ipJoined = $("ipJoined");
 const ipStatus = $("ipStatus");
-const ipOnlineList = $("ipOnlineList");
 const ipGroupMembersSection = $("ipGroupMembersSection");
 const ipGroupMembersList = $("ipGroupMembersList");
-const shareUrl = $("shareUrl");
+const ipDob = $("ipDob");
+const ipGender = $("ipGender");
+const ipInterests = $("ipInterests");
+const ipExtraSection = $("ipExtraSection");
+const ipLocation = $("ipLocation");
+
 const toastContainer = $("toastContainer");
 const themeToggleBtn = $("themeToggleBtn");
 const themeIcon = $("themeIcon");
 const themeLabelText = $("themeLabelText");
 const avatarWrap = $("avatarWrap");
-const profileDropdown = $("profileDropdown");
-const pdUser = $("pdUser");
 const pdLogout = $("pdLogout");
 const attachBtn = $("attachBtn");
 const attachMenu = $("attachMenu");
@@ -184,11 +187,13 @@ const mdSearch = $("mdSearch");
 const mdSelectMsg = $("mdSelectMsg");
 const mdPinChat = $("mdPinChat");
 const mdEditNick = $("mdEditNick");
+const mdRenameChat = $("mdRenameChat");
 const mdClearChat = $("mdClearChat");
 const mdDeleteChat = $("mdDeleteChat");
 const mdBlock = $("mdBlock");
 const mdAddFav = $("mdAddFav");
 const editNickModal = $("editNickModal");
+const editNickModalTitle = $("editNickModalTitle");
 const editNickClose = $("editNickClose");
 const editNickCancel = $("editNickCancel");
 const editNickSave = $("editNickSave");
@@ -209,7 +214,6 @@ const gsAddMemberSearch = $("gsAddMemberSearch");
 const gsAddMemberList = $("gsAddMemberList");
 const gsDeleteGroup = $("gsDeleteGroup");
 
-// Responsive
 const sidebar = $("sidebar");
 const sidebarOverlay = $("sidebarOverlay");
 const sidebarCloseBtn = $("sidebarCloseBtn");
@@ -221,7 +225,6 @@ const infoPanelOverlay = $("infoPanelOverlay");
 const infoPanelCloseBtn = $("infoPanelCloseBtn");
 const infoPanelToggleBtn = $("infoPanelToggleBtn");
 
-// Groups panel
 const groupsNavItem = $("groupsNavItem");
 const groupsPanel = $("groupsPanel");
 const groupsPanelClose = $("groupsPanelClose");
@@ -239,56 +242,97 @@ const groupMemberSearch = $("groupMemberSearch");
 const groupMemberList = $("groupMemberList");
 const selectedMembersWrap = $("selectedMembersWrap");
 
-// Mobile footer profile elements
-const avatarName = $("avatarName");
-const avatarEmail = $("avatarEmail");
+// ═══════════════════════════════════════════════════════════════════════════
+// RESET INFO PANEL FIELDS
+// ═══════════════════════════════════════════════════════════════════════════
+function resetInfoPanelFields() {
+  if (ipName) ipName.textContent = "";
+  if (ipUsername) ipUsername.textContent = "";
+  if (ipAbout) ipAbout.textContent = "";
+  if (ipStatus) ipStatus.textContent = "";
+  if (ipJoined) ipJoined.textContent = "";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// RESPONSIVE helpers
-// ═══════════════════════════════════════════════════════════════════════════
-function openSidebar() {
-  sidebar?.classList.add("open");
-  sidebarOverlay?.classList.add("active");
+  if (ipAvatar) {
+    ipAvatar.style.background = "";
+    ipAvatar.innerHTML = "";
+    ipAvatar.style.width = "72px";
+    ipAvatar.style.height = "72px";
+  }
+
+  if (ipEmail) {
+    ipEmail.innerHTML = "";
+    ipEmail.style.display = "";
+    ipEmail.style.alignItems = "";
+    ipEmail.style.gap = "";
+  }
+
+  if (ipPhone) {
+    ipPhone.innerHTML = "";
+    ipPhone.style.display = "";
+    ipPhone.style.alignItems = "";
+    ipPhone.style.gap = "";
+  }
+
+  if (ipDob) {
+    ipDob.innerHTML = "";
+    ipDob.style.display = "";
+    ipDob.style.alignItems = "";
+    ipDob.style.gap = "";
+  }
+
+  if (ipGender) {
+    ipGender.innerHTML = "";
+    ipGender.style.display = "";
+    ipGender.style.alignItems = "";
+    ipGender.style.gap = "";
+  }
+
+  if (ipInterests) {
+    ipInterests.innerHTML = "";
+    ipInterests.style.display = "";
+    ipInterests.style.flexWrap = "";
+    ipInterests.style.gap = "";
+  }
+
+  if (ipLocation) {
+    ipLocation.innerHTML = "";
+    ipLocation.style.display = "";
+    ipLocation.style.alignItems = "";
+    ipLocation.style.gap = "";
+  }
+
+  if (ipGroupMembersList) {
+    ipGroupMembersList.innerHTML = "";
+  }
+
+  if (ipExtraSection) {
+    ipExtraSection.classList.add("hidden");
+  }
+
+  if (ipGroupMembersSection) {
+    ipGroupMembersSection.classList.add("hidden");
+  }
 }
 
-function closeSidebar() {
-  sidebar?.classList.remove("open");
-  sidebarOverlay?.classList.remove("active");
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPONSIVE
+// ═══════════════════════════════════════════════════════════════════════════
+function openSidebar() { sidebar?.classList.add("open"); sidebarOverlay?.classList.add("active"); }
+function closeSidebar() { sidebar?.classList.remove("open"); sidebarOverlay?.classList.remove("active"); }
 
 mobileMenuBtn?.addEventListener("click", openSidebar);
 sidebarCloseBtn?.addEventListener("click", closeSidebar);
 sidebarOverlay?.addEventListener("click", closeSidebar);
-
-mobileNewChatBtn?.addEventListener("click", () => {
-  closeSidebar();
-  openNewChatModal();
-});
+mobileNewChatBtn?.addEventListener("click", () => { closeSidebar(); openNewChatModal(); });
 
 function mobileChatOpen() {
-  if (window.innerWidth <= 768) {
-    document.body.classList.add("chat-active");
-    closeSidebar();
-    closeGroupsPanel();
-  }
+  if (window.innerWidth <= 768) { document.body.classList.add("chat-active"); closeSidebar(); closeGroupsPanel(); }
 }
-
-function mobileChatClose() {
-  document.body.classList.remove("chat-active");
-}
-
+function mobileChatClose() { document.body.classList.remove("chat-active"); }
 chatBackBtn?.addEventListener("click", mobileChatClose);
 
-function openInfoPanel() {
-  infoPanel?.classList.add("open");
-  if (window.innerWidth <= 1024) infoPanelOverlay?.classList.add("active");
-}
-
-function closeInfoPanel() {
-  infoPanel?.classList.remove("open");
-  infoPanelOverlay?.classList.remove("active");
-}
-
+function openInfoPanel() { infoPanel?.classList.add("open"); if (window.innerWidth <= 1024) infoPanelOverlay?.classList.add("active"); }
+function closeInfoPanel() { infoPanel?.classList.remove("open"); infoPanelOverlay?.classList.remove("active"); }
 infoPanelToggleBtn?.addEventListener("click", openInfoPanel);
 infoPanelCloseBtn?.addEventListener("click", closeInfoPanel);
 infoPanelOverlay?.addEventListener("click", closeInfoPanel);
@@ -296,12 +340,7 @@ infoPanelOverlay?.addEventListener("click", closeInfoPanel);
 let _lastW = window.innerWidth;
 window.addEventListener("resize", () => {
   const w = window.innerWidth;
-  if (w > 768 && _lastW <= 768) {
-    closeSidebar();
-    mobileChatClose();
-    closeInfoPanel();
-    closeGroupsPanel();
-  }
+  if (w > 768 && _lastW <= 768) { closeSidebar(); mobileChatClose(); closeInfoPanel(); closeGroupsPanel(); }
   if (w > 1024) closeInfoPanel();
   _lastW = w;
 });
@@ -310,11 +349,7 @@ window.addEventListener("resize", () => {
 // TOAST
 // ═══════════════════════════════════════════════════════════════════════════
 function showToast(msg, type = "success") {
-  const icons = {
-    success: "ri-checkbox-circle-line",
-    error: "ri-error-warning-line",
-    warning: "ri-alert-line",
-  };
+  const icons = { success: "ri-checkbox-circle-line", error: "ri-error-warning-line", warning: "ri-alert-line" };
   const t = document.createElement("div");
   t.className = `toast ${type}`;
   t.innerHTML = `<i class="${icons[type] || icons.success}"></i><span>${msg}</span>`;
@@ -336,10 +371,7 @@ function buildAvatarEl(el, name, avatarUrl) {
 }
 
 function escHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function loadMyProfile(uid) {
@@ -347,91 +379,81 @@ function loadMyProfile(uid) {
   return raw ? JSON.parse(raw) : null;
 }
 
-// ─── Pinned Chats ─────────────────────────────────────────────────────────
+function formatChatTime(date) {
+  if (!date) return "";
+  const now = new Date();
+  const diff = now - date;
+  const oneDay = 86400000;
+  if (diff < oneDay && now.getDate() === date.getDate())
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diff < 2 * oneDay) return "Yesterday";
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function formatDob(dobStr) {
+  if (!dobStr) return "—";
+  try {
+    const d = new Date(dobStr);
+    return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  } catch { return dobStr; }
+}
+
+function genderIcon(gender) {
+  if (!gender) return "";
+  if (gender === "Male") return `<i class="ri-men-line" style="color:var(--primary)"></i>`;
+  if (gender === "Female") return `<i class="ri-women-line" style="color:#db2777"></i>`;
+  return `<i class="ri-question-line" style="color:var(--text-grey)"></i>`;
+}
+
+function getGeneralChatName() {
+  return localStorage.getItem("nt_general_name") || "General Chat";
+}
+
 function loadPinnedChats(uid) {
   try {
     const raw = localStorage.getItem(`nt_pinned_${uid}`);
     return raw ? new Set(JSON.parse(raw)) : new Set([ROOM_GENERAL]);
-  } catch {
-    return new Set([ROOM_GENERAL]);
-  }
+  } catch { return new Set([ROOM_GENERAL]); }
 }
-
 function savePinnedChats() {
   if (!ME) return;
   localStorage.setItem(`nt_pinned_${ME.uid}`, JSON.stringify([...pinnedChats]));
 }
-
 function togglePin(id) {
-  if (pinnedChats.has(id)) {
-    pinnedChats.delete(id);
-    showToast("Chat unpinned", "success");
-  } else {
-    pinnedChats.add(id);
-    showToast("Chat pinned 📌", "success");
-  }
+  if (pinnedChats.has(id)) { pinnedChats.delete(id); showToast("Chat unpinned", "success"); }
+  else { pinnedChats.add(id); showToast("Chat pinned 📌", "success"); }
   savePinnedChats();
   renderContactsList();
   updatePinMenuLabel();
 }
-
 function updatePinMenuLabel() {
   if (!mdPinChat) return;
   const isPinned = activeRoomId && pinnedChats.has(activeRoomId);
-  mdPinChat.innerHTML = isPinned
-    ? `<i class="ri-pushpin-fill"></i> Unpin Chat`
-    : `<i class="ri-pushpin-line"></i> Pin Chat`;
+  mdPinChat.innerHTML = isPinned ? `<i class="ri-pushpin-fill"></i> Unpin Chat` : `<i class="ri-pushpin-line"></i> Pin Chat`;
   mdPinChat.classList.toggle("pinned-active", !!isPinned);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// THEME — dynamic label update
+// THEME
 // ═══════════════════════════════════════════════════════════════════════════
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-
-  if (themeIcon) {
-    themeIcon.className = theme === "dark" ? "ri-sun-line" : "ri-moon-line";
-  }
-
-  // When currently DARK → button shows "Light Mode" (click to switch to light)
-  // When currently LIGHT → button shows "Dark Mode" (click to switch to dark)
-  if (themeLabelText) {
-    themeLabelText.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
-  }
-
+  if (themeIcon) themeIcon.className = theme === "dark" ? "ri-sun-line" : "ri-moon-line";
+  if (themeLabelText) themeLabelText.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
   localStorage.setItem("nt_theme", theme);
 }
-
 themeToggleBtn?.addEventListener("click", () => {
-  applyTheme(
-    document.documentElement.getAttribute("data-theme") === "dark"
-      ? "light"
-      : "dark",
-  );
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
 });
-
-// Apply saved or default theme on load
 applyTheme(localStorage.getItem("nt_theme") || "light");
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PROFILE DROPDOWN
+// PROFILE DROPDOWN / LOGOUT
 // ═══════════════════════════════════════════════════════════════════════════
-avatarWrap?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  profileDropdown?.classList.toggle("open");
-  avatarWrap.classList.toggle("dropdown-open");
-});
 document.addEventListener("click", () => {
-  profileDropdown?.classList.remove("open");
-  avatarWrap?.classList.remove("dropdown-open");
   closeMoreDropdown();
 });
-profileDropdown?.addEventListener("click", (e) => e.stopPropagation());
 
-// ═══════════════════════════════════════════════════════════════════════════
-// LOGOUT
-// ═══════════════════════════════════════════════════════════════════════════
 pdLogout?.addEventListener("click", async () => {
   await setPresence(false);
   await signOut(auth);
@@ -442,21 +464,20 @@ pdLogout?.addEventListener("click", async () => {
 // AUTH
 // ═══════════════════════════════════════════════════════════════════════════
 onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    window.location.href = "./authentication.html";
-    return;
-  }
+  if (!user) { window.location.href = "./authentication.html"; return; }
   const profile = loadMyProfile(user.uid);
-  if (!profile || !profile.setupDone) {
-    window.location.href = "./profile-setup.html";
-    return;
-  }
+  if (!profile || !profile.setupDone) { window.location.href = "./profile-setup.html"; return; }
   ME = {
     uid: user.uid,
     name: profile.name,
     avatar: profile.avatar || "",
     status: profile.status || "Hey there! I'm using NexTalk",
-    email: user.email,
+    email: profile.email || user.email || "",
+    phone: profile.phone || "",
+    dob: profile.dob || "",
+    gender: profile.gender || "",
+    interests: profile.interests || [],
+    location: profile.location || { display: "", city: "", country: "", lat: null, lng: null },
   };
   pinnedChats = loadPinnedChats(user.uid);
   init();
@@ -467,29 +488,334 @@ onAuthStateChanged(auth, async (user) => {
 // ═══════════════════════════════════════════════════════════════════════════
 async function init() {
   buildAvatarEl(sidebarAvatar, ME.name, ME.avatar);
-  if (pdUser) pdUser.textContent = ME.name;
-  if (shareUrl) shareUrl.textContent = window.location.href;
-
-  // Populate mobile footer profile card
-  updateMobileFooterProfile();
-
+  renderOwnProfileInInfoPanel();
   await setPresence(true);
   window.addEventListener("beforeunload", () => setPresence(false));
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") setPresence(false);
     else setPresence(true);
   });
-
+  await loadExistingDmRooms();
   renderContactsList();
   listenPresence();
   listenGroups();
-  openRoom(ROOM_GENERAL, "General Chat", null, true, null, false);
+  openRoom(ROOM_GENERAL, getGeneralChatName(), null, true, null, false);
+  startPresenceHeartbeat();
 }
 
-// ─── Mobile footer profile info ────────────────────────────────────────────
-function updateMobileFooterProfile() {
-  if (avatarName) avatarName.textContent = ME.name || "";
-  if (avatarEmail) avatarEmail.textContent = ME.email || "";
+// ═══════════════════════════════════════════════════════════════════════════
+// ✅ FIX 1 & 2: LOAD EXISTING DM ROOMS — Duplicate prevention added
+// ═══════════════════════════════════════════════════════════════════════════
+async function loadExistingDmRooms() {
+  if (!ME) return;
+  existingDmRooms = []; // Fresh start, no stale data
+
+  try {
+    const userRoomsRef = doc(db, "userRooms", ME.uid);
+    const userRoomsSnap = await getDoc(userRoomsRef);
+    if (!userRoomsSnap.exists()) return;
+
+    const data = userRoomsSnap.data();
+    // ✅ FIX 1: Unique roomIds — Set se duplicates hata do
+    const roomIds = [...new Set(data.rooms || [])];
+
+    // ✅ FIX 2: Track processed otherUids to prevent same user multiple times
+    const processedUids = new Set();
+
+    for (const roomId of roomIds) {
+      const parts = roomId.split("__");
+      // Sirf valid DM rooms (2 parts, dono alag uid)
+      if (parts.length !== 2) continue;
+
+      const otherUid = parts.find(p => p !== ME.uid);
+      if (!otherUid) continue;
+
+      // ✅ FIX 2: Agar ye user pehle se process ho chuka hai, skip karo
+      if (processedUids.has(otherUid)) {
+        console.warn(`Duplicate DM room skipped for uid: ${otherUid}, roomId: ${roomId}`);
+        continue;
+      }
+      processedUids.add(otherUid);
+
+      // Last message fetch
+      let lastText = "";
+      let lastTs = null;
+      try {
+        const lastMsgSnap = await getDocs(
+          query(
+            collection(db, "rooms", roomId, "messages"),
+            orderBy("createdAt", "desc"),
+            limit(1)
+          )
+        );
+        if (!lastMsgSnap.empty) {
+          const lastMsg = lastMsgSnap.docs[0].data();
+          if (lastMsg.uid !== "system" && !lastMsg.deleted) {
+            lastText = lastMsg.type === "image" ? "📷 Image"
+              : lastMsg.type === "file" ? `📎 ${lastMsg.fileName || "File"}`
+                : lastMsg.type === "sticker" ? lastMsg.text
+                  : (lastMsg.text || "");
+          }
+          lastTs = lastMsg.createdAt?.toDate ? lastMsg.createdAt.toDate() : null;
+        }
+      } catch (_) { }
+
+      existingDmRooms.push({
+        uid: otherUid,
+        roomId,
+        name: otherUid,
+        avatar: "",
+        status: "",
+        online: false,
+        lastText,
+        lastTs,
+      });
+    }
+  } catch (err) {
+    console.warn("loadExistingDmRooms error:", err);
+  }
+}
+
+async function registerDmRoom(roomId) {
+  if (!ME) return;
+  try {
+    const parts = roomId.split("__");
+    if (parts.length !== 2) return;
+    const otherUid = parts.find(p => p !== ME.uid);
+    if (!otherUid) return;
+
+    // ✅ FIX 1: Register karte time bhi dedup — Firestore me push se pehle check
+    const userRoomsRef = doc(db, "userRooms", ME.uid);
+    const snap = await getDoc(userRoomsRef);
+    const existing = snap.exists() ? [...new Set(snap.data().rooms || [])] : [];
+    if (!existing.includes(roomId)) {
+      await setDoc(userRoomsRef, { rooms: [...existing, roomId] }, { merge: true });
+    }
+
+    const otherUserRoomsRef = doc(db, "userRooms", otherUid);
+    const otherSnap = await getDoc(otherUserRoomsRef);
+    const otherExisting = otherSnap.exists() ? [...new Set(otherSnap.data().rooms || [])] : [];
+    if (!otherExisting.includes(roomId)) {
+      await setDoc(otherUserRoomsRef, { rooms: [...otherExisting, roomId] }, { merge: true });
+    }
+  } catch (err) {
+    console.warn("registerDmRoom error:", err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDER OWN PROFILE IN INFO PANEL
+// ═══════════════════════════════════════════════════════════════════════════
+function renderOwnProfileInInfoPanel() {
+  if (!ME) return;
+
+  resetInfoPanelFields();
+
+  buildAvatarEl(ipAvatar, ME.name, ME.avatar);
+  if (ipAvatar) { ipAvatar.style.width = "72px"; ipAvatar.style.height = "72px"; }
+
+  if (ipName) ipName.textContent = ME.name;
+  if (ipUsername) ipUsername.textContent = `@${ME.name.toLowerCase().replace(/\s+/g, "")}`;
+  if (ipAbout) ipAbout.textContent = ME.status || "Hey there! I'm using NexTalk";
+  if (ipStatus) ipStatus.textContent = "Your profile";
+
+  const profile = loadMyProfile(ME.uid);
+
+  if (ipEmail) {
+    renderEditableField(ipEmail, ME.email || "—", "email", async () => {
+      showToast("Email cannot be changed here. Update from account settings.", "warning");
+    }, true);
+  }
+
+  if (ipPhone) {
+    renderEditableField(ipPhone, ME.phone || "Add phone number", "phone", async (val) => {
+      const p = loadMyProfile(ME.uid);
+      if (p) { p.phone = val; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p)); ME.phone = val; }
+      showToast("Phone number saved ✓", "success");
+    }, false);
+  }
+
+  if (ipDob) {
+    const dobDisplay = formatDob(ME.dob);
+    renderEditableField(ipDob, dobDisplay !== "—" ? dobDisplay : "Add date of birth", "dob", async (val) => {
+      const p = loadMyProfile(ME.uid);
+      if (p) { p.dob = val; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p)); ME.dob = val; }
+      showToast("Date of birth saved ✓", "success");
+    }, false, "date");
+  }
+
+  if (ipGender) renderGenderField(ipGender, ME.gender || "");
+  if (ipInterests) renderInterestTags(ipInterests, ME.interests || []);
+  if (ipLocation) renderLocationField(ipLocation, ME.location || {});
+
+  if (ipJoined) {
+    const joinedDate = profile?.createdAt
+      ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+      : new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    ipJoined.textContent = joinedDate;
+  }
+
+  if (ipExtraSection) ipExtraSection.classList.remove("hidden");
+  if (ipGroupMembersSection) ipGroupMembersSection.classList.add("hidden");
+}
+
+function renderLocationField(el, location) {
+  el.innerHTML = "";
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.gap = "6px";
+
+  const displayText = location?.display || "";
+
+  const span = document.createElement("span");
+  span.style.cssText = "flex:1; color: var(--text); font-size:13px; word-break:break-all;";
+
+  if (displayText) {
+    span.innerHTML = `<span class="ip-location-chip"><i class="ri-map-pin-2-fill" style="color:var(--primary);margin-right:4px;"></i>${escHtml(displayText)}</span>`;
+  } else {
+    span.innerHTML = `<span style="color:var(--text-grey)">Add location</span>`;
+  }
+  el.appendChild(span);
+
+  const editBtn = document.createElement("button");
+  editBtn.className = "icon-btn";
+  editBtn.style.cssText = "width:22px;height:22px;font-size:13px;opacity:0.55;flex-shrink:0;";
+  editBtn.innerHTML = `<i class="ri-edit-line"></i>`;
+  editBtn.title = "Edit location";
+  el.appendChild(editBtn);
+
+  editBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    el.innerHTML = "";
+    el.style.flexWrap = "nowrap";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = displayText || "";
+    input.placeholder = "e.g. Dehradun, Uttarakhand";
+    input.style.cssText = `flex:1;border:none;border-bottom:1.5px solid var(--primary);background:transparent;font-family:'Work Sans',sans-serif;font-size:13px;color:var(--text);outline:none;padding:2px 4px;min-width:0;`;
+
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "icon-btn";
+    saveBtn.style.cssText = "width:22px;height:22px;font-size:13px;color:var(--primary);flex-shrink:0;";
+    saveBtn.innerHTML = `<i class="ri-check-line"></i>`;
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "icon-btn";
+    cancelBtn.style.cssText = "width:22px;height:22px;font-size:13px;flex-shrink:0;";
+    cancelBtn.innerHTML = `<i class="ri-close-line"></i>`;
+
+    el.appendChild(input);
+    el.appendChild(saveBtn);
+    el.appendChild(cancelBtn);
+    input.focus();
+
+    const doSave = async () => {
+      const newVal = input.value.trim();
+      const p = loadMyProfile(ME.uid);
+      if (p) {
+        if (!p.location) p.location = {};
+        p.location.display = newVal;
+        localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p));
+        ME.location = { ...ME.location, display: newVal };
+      }
+      showToast("Location saved ✓", "success");
+      renderLocationField(el, ME.location);
+    };
+
+    saveBtn.addEventListener("click", doSave);
+    cancelBtn.addEventListener("click", () => renderLocationField(el, location));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doSave();
+      if (e.key === "Escape") renderLocationField(el, location);
+    });
+  });
+}
+
+function renderGenderField(el, gender) {
+  el.innerHTML = "";
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.gap = "6px";
+  if (gender && gender !== "Not specified") {
+    el.innerHTML = `${genderIcon(gender)}<span style="font-size:13px;color:var(--text)">${escHtml(gender)}</span>`;
+  } else {
+    el.innerHTML = `<span style="font-size:13px;color:var(--text-grey)">Not specified</span>`;
+  }
+}
+
+function renderInterestTags(el, interests) {
+  el.innerHTML = "";
+  if (!interests || !interests.length) {
+    el.innerHTML = `<span style="font-size:13px;color:var(--text-grey)">No interests added</span>`;
+    return;
+  }
+  el.style.display = "flex";
+  el.style.flexWrap = "wrap";
+  el.style.gap = "6px";
+  interests.forEach(tag => {
+    const chip = document.createElement("span");
+    chip.style.cssText = `display:inline-flex;align-items:center;padding:3px 10px;background:rgba(0,128,128,0.1);color:var(--primary);border-radius:20px;font-size:12px;font-weight:600;`;
+    chip.textContent = tag;
+    el.appendChild(chip);
+  });
+}
+
+function renderEditableField(el, value, fieldName, onSave, readonly = false, inputType = "text") {
+  el.innerHTML = "";
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.gap = "6px";
+
+  const span = document.createElement("span");
+  span.textContent = value || "—";
+  span.style.cssText = "flex:1; color: var(--text); font-size:13px; word-break:break-all;";
+  el.appendChild(span);
+
+  if (!readonly) {
+    const editBtn = document.createElement("button");
+    editBtn.className = "icon-btn";
+    editBtn.style.cssText = "width:22px;height:22px;font-size:13px;opacity:0.55;flex-shrink:0;";
+    editBtn.innerHTML = `<i class="ri-edit-line"></i>`;
+    editBtn.title = `Edit ${fieldName}`;
+    el.appendChild(editBtn);
+
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      el.innerHTML = "";
+      el.style.flexWrap = "nowrap";
+      const input = document.createElement("input");
+      input.type = inputType;
+      const isPlaceholder = value.startsWith("Add ");
+      input.value = isPlaceholder ? "" : (value || "");
+      input.placeholder = fieldName === "phone" ? "+91 98765 43210" : fieldName === "dob" ? "YYYY-MM-DD" : "your@email.com";
+      input.style.cssText = `flex:1;border:none;border-bottom:1.5px solid var(--primary);background:transparent;font-family:'Work Sans',sans-serif;font-size:13px;color:var(--text);outline:none;padding:2px 4px;min-width:0;`;
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "icon-btn";
+      saveBtn.style.cssText = "width:22px;height:22px;font-size:13px;color:var(--primary);flex-shrink:0;";
+      saveBtn.innerHTML = `<i class="ri-check-line"></i>`;
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "icon-btn";
+      cancelBtn.style.cssText = "width:22px;height:22px;font-size:13px;flex-shrink:0;";
+      cancelBtn.innerHTML = `<i class="ri-close-line"></i>`;
+      el.appendChild(input);
+      el.appendChild(saveBtn);
+      el.appendChild(cancelBtn);
+      input.focus();
+      const doSave = async () => {
+        const newVal = input.value.trim();
+        await onSave(newVal);
+        const displayVal = fieldName === "dob" && newVal ? formatDob(newVal) : (newVal || value);
+        renderEditableField(el, displayVal, fieldName, onSave, readonly, inputType);
+      };
+      saveBtn.addEventListener("click", doSave);
+      cancelBtn.addEventListener("click", () => renderEditableField(el, value, fieldName, onSave, readonly, inputType));
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") doSave();
+        if (e.key === "Escape") renderEditableField(el, value, fieldName, onSave, readonly, inputType);
+      });
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -499,77 +825,59 @@ async function setPresence(online) {
   if (!ME) return;
   try {
     await setDoc(doc(db, "presence", ME.uid), {
-      uid: ME.uid,
-      name: ME.name,
-      avatar: ME.avatar,
-      status: ME.status,
-      online,
-      lastSeen: serverTimestamp(),
+      uid: ME.uid, name: ME.name, avatar: ME.avatar,
+      status: ME.status, online, lastSeen: serverTimestamp(),
     });
   } catch (_) { }
 }
 
 let presenceHeartbeat = null;
-
 function startPresenceHeartbeat() {
   stopPresenceHeartbeat();
   presenceHeartbeat = setInterval(() => {
     if (document.visibilityState !== "hidden") setPresence(true);
   }, 30000);
 }
-
 function stopPresenceHeartbeat() {
-  if (presenceHeartbeat) {
-    clearInterval(presenceHeartbeat);
-    presenceHeartbeat = null;
-  }
+  if (presenceHeartbeat) { clearInterval(presenceHeartbeat); presenceHeartbeat = null; }
 }
 
-// ─── FIX: Presence detection ──────────────────────────────────────────────
 function isTrulyOnline(presenceData) {
   if (!presenceData.online) return false;
   if (!presenceData.lastSeen) return true;
-  const lastSeenDate = presenceData.lastSeen.toDate
-    ? presenceData.lastSeen.toDate()
-    : new Date(presenceData.lastSeen);
-  const diffSeconds = (Date.now() - lastSeenDate.getTime()) / 1000;
-  return diffSeconds < 120;
+  const lastSeenDate = presenceData.lastSeen.toDate ? presenceData.lastSeen.toDate() : new Date(presenceData.lastSeen);
+  return (Date.now() - lastSeenDate.getTime()) / 1000 < 120;
 }
 
 function listenPresence() {
   presenceUnsub = onSnapshot(collection(db, "presence"), (snap) => {
-    const rawUsers = snap.docs.map((d) => d.data());
+    const rawUsers = snap.docs.map(d => d.data());
     const uidMap = new Map();
-    rawUsers.forEach((u) => {
-      if (!uidMap.has(u.uid)) {
-        uidMap.set(u.uid, u);
-      } else {
+    rawUsers.forEach(u => {
+      if (!uidMap.has(u.uid)) { uidMap.set(u.uid, u); }
+      else {
         const existing = uidMap.get(u.uid);
-        const uOnline = isTrulyOnline(u);
-        const existingOnline = isTrulyOnline(existing);
-        if (uOnline && !existingOnline) uidMap.set(u.uid, u);
+        if (isTrulyOnline(u) && !isTrulyOnline(existing)) uidMap.set(u.uid, u);
       }
     });
-
-    allPresenceUsers = Array.from(uidMap.values()).map((u) => ({
-      ...u,
-      online: isTrulyOnline(u),
-    }));
-
-    const onlineUsers = allPresenceUsers.filter((u) => u.online);
+    allPresenceUsers = Array.from(uidMap.values()).map(u => ({ ...u, online: isTrulyOnline(u) }));
+    const onlineUsers = allPresenceUsers.filter(u => u.online);
     renderOnlineStrip(onlineUsers);
-    renderOnlinePanel(allPresenceUsers);
-
-    if (
-      activeRoomId &&
-      activeRoomId !== ROOM_GENERAL &&
-      !activeRoomMeta.isGroup
-    ) {
-      const otherUser = allPresenceUsers.find(
-        (u) => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId,
-      );
+    existingDmRooms.forEach(room => {
+      const liveUser = allPresenceUsers.find(u => u.uid === room.uid);
+      if (liveUser) {
+        room.online = liveUser.online;
+        room.name = liveUser.name || room.name;
+        room.avatar = liveUser.avatar || room.avatar;
+        room.status = liveUser.status || room.status;
+      }
+    });
+    renderAllUsersPanel(allPresenceUsers);
+    if (activeRoomId && activeRoomId !== ROOM_GENERAL && !activeRoomMeta.isGroup) {
+      const otherUser = allPresenceUsers.find(u => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId);
       if (otherUser) updateChatHeaderPresence(otherUser);
     }
+    renderContactsList();
   });
 }
 
@@ -583,60 +891,44 @@ function updateChatHeaderPresence(user) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GROUPS — Firestore-backed
+// GROUPS
 // ═══════════════════════════════════════════════════════════════════════════
 let allGroups = [];
 
 function listenGroups() {
   groupsUnsub = onSnapshot(collection(db, "groups"), (snap) => {
-    allGroups = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((g) => g.members && g.members.includes(ME?.uid));
+    allGroups = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.members && g.members.includes(ME?.uid));
     renderGroupsList();
   });
 }
 
-function openGroupsPanel() {
-  groupsPanel?.classList.add("open");
-  groupsPanelOverlay?.classList.add("active");
-  renderGroupsList();
-}
-
-function closeGroupsPanel() {
-  groupsPanel?.classList.remove("open");
-  groupsPanelOverlay?.classList.remove("active");
-}
+function openGroupsPanel() { groupsPanel?.classList.add("open"); groupsPanelOverlay?.classList.add("active"); renderGroupsList(); }
+function closeGroupsPanel() { groupsPanel?.classList.remove("open"); groupsPanelOverlay?.classList.remove("active"); }
 
 function renderGroupsList() {
   if (!groupsList) return;
   if (!allGroups.length) {
-    groupsList.innerHTML = `
-      <li class="groups-empty">
-        <i class="ri-team-line"></i>
-        No groups yet.<br>Tap <b>+</b> to create one.
-      </li>`;
+    groupsList.innerHTML = `<li class="groups-empty"><i class="ri-team-line"></i>No groups yet.<br>Tap <b>+</b> to create one.</li>`;
     return;
   }
-  groupsList.innerHTML = allGroups
-    .map((g) => {
-      const isAdmin = g.adminUid === ME?.uid;
-      const isActive = activeRoomId === `group__${g.id}`;
-      return `
-        <li class="group-item ${isActive ? "active" : ""}" data-id="${g.id}">
-          <div class="group-av">${escHtml(g.icon || "💬")}</div>
-          <div class="group-info">
-            <div class="group-name">${escHtml(g.name)}</div>
-            <div class="group-desc">${escHtml(g.desc || `${g.members?.length || 0} members`)}</div>
-          </div>
-          ${isAdmin ? `<span class="group-admin-badge">Admin</span>` : ""}
-        </li>`;
-    })
-    .join("");
+  groupsList.innerHTML = allGroups.map(g => {
+    const isAdmin = g.adminUid === ME?.uid;
+    const isActive = activeRoomId === `group__${g.id}`;
+    return `
+      <li class="group-item ${isActive ? "active" : ""}" data-id="${g.id}">
+        <div class="group-av">${escHtml(g.icon || "💬")}</div>
+        <div class="group-info">
+          <div class="group-name">${escHtml(g.name)}</div>
+          <div class="group-desc">${escHtml(g.desc || `${g.members?.length || 0} members`)}</div>
+        </div>
+        ${isAdmin ? `<span class="group-admin-badge">Admin</span>` : ""}
+      </li>`;
+  }).join("");
 
-  groupsList.querySelectorAll(".group-item").forEach((el) => {
+  groupsList.querySelectorAll(".group-item").forEach(el => {
     el.addEventListener("click", () => {
       const id = el.dataset.id;
-      const grp = allGroups.find((g) => g.id === id);
+      const grp = allGroups.find(g => g.id === id);
       if (!grp) return;
       closeGroupsPanel();
       openRoom(`group__${grp.id}`, grp.name, null, false, null, true, grp);
@@ -648,18 +940,10 @@ function renderGroupsList() {
 
 groupsNavItem?.addEventListener("click", (e) => {
   e.preventDefault();
-  groupsPanel?.classList.contains("open")
-    ? closeGroupsPanel()
-    : openGroupsPanel();
+  groupsPanel?.classList.contains("open") ? closeGroupsPanel() : openGroupsPanel();
 });
 groupsPanelClose?.addEventListener("click", closeGroupsPanel);
 groupsPanelOverlay?.addEventListener("click", closeGroupsPanel);
-
-// ─── Create Group Modal ───────────────────────────────────────────────────
-createGroupBtn?.addEventListener("click", () => {
-  closeGroupsPanel();
-  openCreateGroupModal();
-});
 
 function openCreateGroupModal() {
   groupSelectedMembers.clear();
@@ -668,72 +952,52 @@ function openCreateGroupModal() {
   if (groupDescInput) groupDescInput.value = "";
   renderSelectedMembersChips();
   renderGroupMemberPicker("");
-  groupIconPicker?.querySelectorAll(".gip-item").forEach((el) => {
-    el.classList.toggle("active", el.dataset.icon === "💬");
-  });
+  groupIconPicker?.querySelectorAll(".gip-item").forEach(el => { el.classList.toggle("active", el.dataset.icon === "💬"); });
   createGroupModal?.classList.remove("hidden");
   groupNameInput?.focus();
 }
 
-createGroupModalClose?.addEventListener("click", () =>
-  createGroupModal?.classList.add("hidden"),
-);
-createGroupCancel?.addEventListener("click", () =>
-  createGroupModal?.classList.add("hidden"),
-);
-createGroupModal?.addEventListener("click", (e) => {
-  if (e.target === createGroupModal) createGroupModal.classList.add("hidden");
-});
+createGroupBtn?.addEventListener("click", () => { closeGroupsPanel(); openCreateGroupModal(); });
+createGroupModalClose?.addEventListener("click", () => createGroupModal?.classList.add("hidden"));
+createGroupCancel?.addEventListener("click", () => createGroupModal?.classList.add("hidden"));
+createGroupModal?.addEventListener("click", (e) => { if (e.target === createGroupModal) createGroupModal.classList.add("hidden"); });
 
 groupIconPicker?.addEventListener("click", (e) => {
   const item = e.target.closest(".gip-item");
   if (!item) return;
   selectedGroupIcon = item.dataset.icon;
-  groupIconPicker
-    .querySelectorAll(".gip-item")
-    .forEach((el) => el.classList.toggle("active", el === item));
+  groupIconPicker.querySelectorAll(".gip-item").forEach(el => el.classList.toggle("active", el === item));
 });
 
-groupMemberSearch?.addEventListener("input", () => {
-  renderGroupMemberPicker(groupMemberSearch.value.toLowerCase());
-});
+groupMemberSearch?.addEventListener("input", () => renderGroupMemberPicker(groupMemberSearch.value.toLowerCase()));
 
 function renderGroupMemberPicker(q) {
   if (!groupMemberList) return;
-  const users = allPresenceUsers.filter(
-    (u) =>
-      u.uid !== ME?.uid &&
-      !groupSelectedMembers.has(u.uid) &&
-      (!q || u.name.toLowerCase().includes(q)),
-  );
+  const users = allPresenceUsers.filter(u => u.uid !== ME?.uid && !groupSelectedMembers.has(u.uid) && (!q || u.name.toLowerCase().includes(q)));
   if (!users.length) {
     groupMemberList.innerHTML = `<li class="modal-empty">${q ? "No users found" : "No other users available"}</li>`;
     return;
   }
-  groupMemberList.innerHTML = users
-    .map((u) => {
-      const color = colorFor(u.name);
-      const av = u.avatar
-        ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-        : u.name.charAt(0).toUpperCase();
-      return `
-        <li class="modal-user-item" data-uid="${u.uid}">
-          <div class="modal-user-av" style="background:${color};">${av}
-            <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
-          </div>
-          <div class="modal-user-info">
-            <div class="modal-user-name">${escHtml(u.name)}</div>
-            <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
-          </div>
-          <div class="modal-check"><i class="ri-check-line"></i></div>
-        </li>`;
-    })
-    .join("");
+  groupMemberList.innerHTML = users.map(u => {
+    const color = colorFor(u.name);
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
+    return `
+      <li class="modal-user-item" data-uid="${u.uid}">
+        <div class="modal-user-av" style="background:${color};">${av}
+          <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+        </div>
+        <div class="modal-user-info">
+          <div class="modal-user-name">${escHtml(u.name)}</div>
+          <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+        </div>
+        <div class="modal-check"><i class="ri-check-line"></i></div>
+      </li>`;
+  }).join("");
 
-  groupMemberList.querySelectorAll(".modal-user-item").forEach((el) => {
+  groupMemberList.querySelectorAll(".modal-user-item").forEach(el => {
     el.addEventListener("click", () => {
       const uid = el.dataset.uid;
-      const user = allPresenceUsers.find((u) => u.uid === uid);
+      const user = allPresenceUsers.find(u => u.uid === uid);
       if (!user) return;
       groupSelectedMembers.set(uid, user);
       renderSelectedMembersChips();
@@ -744,22 +1008,18 @@ function renderGroupMemberPicker(q) {
 
 function renderSelectedMembersChips() {
   if (!selectedMembersWrap) return;
-  selectedMembersWrap.innerHTML = [...groupSelectedMembers.values()]
-    .map((u) => {
-      const color = colorFor(u.name);
-      const av = u.avatar
-        ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
-        : u.name.charAt(0).toUpperCase();
-      return `
-        <div class="member-chip" data-uid="${u.uid}">
-          <div class="chip-av" style="background:${color};">${av}</div>
-          <span>${escHtml(u.name)}</span>
-          <span class="chip-remove" title="Remove">✕</span>
-        </div>`;
-    })
-    .join("");
+  selectedMembersWrap.innerHTML = [...groupSelectedMembers.values()].map(u => {
+    const color = colorFor(u.name);
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : u.name.charAt(0).toUpperCase();
+    return `
+      <div class="member-chip" data-uid="${u.uid}">
+        <div class="chip-av" style="background:${color};">${av}</div>
+        <span>${escHtml(u.name)}</span>
+        <span class="chip-remove" title="Remove">✕</span>
+      </div>`;
+  }).join("");
 
-  selectedMembersWrap.querySelectorAll(".member-chip").forEach((el) => {
+  selectedMembersWrap.querySelectorAll(".member-chip").forEach(el => {
     el.querySelector(".chip-remove")?.addEventListener("click", () => {
       groupSelectedMembers.delete(el.dataset.uid);
       renderSelectedMembersChips();
@@ -770,46 +1030,24 @@ function renderSelectedMembersChips() {
 
 createGroupSave?.addEventListener("click", async () => {
   const name = groupNameInput?.value.trim();
-  if (!name) {
-    showToast("Please enter a group name", "warning");
-    return;
-  }
-  if (groupSelectedMembers.size < 1) {
-    showToast("Add at least 1 member to the group", "warning");
-    return;
-  }
-
+  if (!name) { showToast("Please enter a group name", "warning"); return; }
+  if (groupSelectedMembers.size < 1) { showToast("Add at least 1 member to the group", "warning"); return; }
   const members = [ME.uid, ...groupSelectedMembers.keys()];
   try {
     createGroupSave.disabled = true;
     const ref = await addDoc(collection(db, "groups"), {
-      name,
-      desc: groupDescInput?.value.trim() || "",
-      icon: selectedGroupIcon,
-      adminUid: ME.uid,
-      members,
-      createdAt: serverTimestamp(),
+      name, desc: groupDescInput?.value.trim() || "", icon: selectedGroupIcon,
+      adminUid: ME.uid, members, createdAt: serverTimestamp(),
     });
     showToast(`Group "${name}" created! 🎉`, "success");
     createGroupModal?.classList.add("hidden");
-    const newGroup = {
-      id: ref.id,
-      name,
-      desc: groupDescInput?.value.trim() || "",
-      icon: selectedGroupIcon,
-      adminUid: ME.uid,
-      members,
-    };
+    const newGroup = { id: ref.id, name, desc: groupDescInput?.value.trim() || "", icon: selectedGroupIcon, adminUid: ME.uid, members };
     openRoom(`group__${ref.id}`, name, null, false, null, true, newGroup);
     mobileChatOpen();
-  } catch (err) {
-    showToast("Failed to create group: " + err.message, "error");
-  } finally {
-    if (createGroupSave) createGroupSave.disabled = false;
-  }
+  } catch (err) { showToast("Failed to create group: " + err.message, "error"); }
+  finally { if (createGroupSave) createGroupSave.disabled = false; }
 });
 
-// ─── Group Settings Modal ─────────────────────────────────────────────────
 groupSettingsBtn?.addEventListener("click", () => openGroupSettingsModal());
 
 function openGroupSettingsModal() {
@@ -824,41 +1062,31 @@ function openGroupSettingsModal() {
 function renderGsMembers(grp) {
   if (!gsGroupMembersList) return;
   const members = grp.members || [];
-  if (!members.length) {
-    gsGroupMembersList.innerHTML = `<li class="modal-empty">No members</li>`;
-    return;
-  }
+  if (!members.length) { gsGroupMembersList.innerHTML = `<li class="modal-empty">No members</li>`; return; }
+  gsGroupMembersList.innerHTML = members.map(uid => {
+    const u = allPresenceUsers.find(p => p.uid === uid) || { uid, name: uid, avatar: "", online: false };
+    const color = colorFor(u.name);
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
+    const isAdmin = uid === grp.adminUid;
+    const isSelf = uid === ME?.uid;
+    const canKick = !isAdmin && !isSelf;
+    return `
+      <li class="modal-user-item" data-uid="${uid}" style="cursor:default;">
+        <div class="modal-user-av" style="background:${color};">${av}
+          <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+        </div>
+        <div class="modal-user-info">
+          <div class="modal-user-name">${escHtml(u.name)}${isAdmin ? ' <span style="font-size:10px;color:var(--primary);font-weight:700;">(Admin)</span>' : ""}</div>
+          <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+        </div>
+        ${canKick ? `<button class="icon-btn gs-kick-btn" data-uid="${uid}" title="Remove" style="color:var(--error);"><i class="ri-user-unfollow-line"></i></button>` : ""}
+      </li>`;
+  }).join("");
 
-  gsGroupMembersList.innerHTML = members
-    .map((uid) => {
-      const u = allPresenceUsers.find((p) => p.uid === uid) || {
-        uid, name: uid, avatar: "", online: false,
-      };
-      const color = colorFor(u.name);
-      const av = u.avatar
-        ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-        : u.name.charAt(0).toUpperCase();
-      const isAdmin = uid === grp.adminUid;
-      const isSelf = uid === ME?.uid;
-      const canKick = !isAdmin && !isSelf;
-      return `
-        <li class="modal-user-item" data-uid="${uid}" style="cursor:default;">
-          <div class="modal-user-av" style="background:${color};">${av}
-            <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
-          </div>
-          <div class="modal-user-info">
-            <div class="modal-user-name">${escHtml(u.name)}${isAdmin ? ' <span style="font-size:10px;color:var(--primary);font-weight:700;">(Admin)</span>' : ""}</div>
-            <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
-          </div>
-          ${canKick ? `<button class="icon-btn gs-kick-btn" data-uid="${uid}" title="Remove from group" style="color:var(--error);"><i class="ri-user-unfollow-line"></i></button>` : ""}
-        </li>`;
-    })
-    .join("");
-
-  gsGroupMembersList.querySelectorAll(".gs-kick-btn").forEach((btn) => {
+  gsGroupMembersList.querySelectorAll(".gs-kick-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
       const uid = btn.dataset.uid;
-      const u = allPresenceUsers.find((p) => p.uid === uid);
+      const u = allPresenceUsers.find(p => p.uid === uid);
       if (!confirm(`Remove ${u?.name || uid} from group?`)) return;
       await kickMemberFromGroup(grp.id, uid);
     });
@@ -870,37 +1098,25 @@ function renderGsAddMembers(q) {
   const grp = activeRoomMeta.groupData;
   if (!grp) return;
   const existingMembers = new Set(grp.members || []);
-  const users = allPresenceUsers.filter(
-    (u) =>
-      u.uid !== ME?.uid &&
-      !existingMembers.has(u.uid) &&
-      (!q || u.name.toLowerCase().includes(q)),
-  );
-  if (!users.length) {
-    gsAddMemberList.innerHTML = `<li class="modal-empty">No users to add</li>`;
-    return;
-  }
-  gsAddMemberList.innerHTML = users
-    .map((u) => {
-      const color = colorFor(u.name);
-      const av = u.avatar
-        ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-        : u.name.charAt(0).toUpperCase();
-      return `
-        <li class="modal-user-item" data-uid="${u.uid}">
-          <div class="modal-user-av" style="background:${color};">${av}
-            <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
-          </div>
-          <div class="modal-user-info">
-            <div class="modal-user-name">${escHtml(u.name)}</div>
-            <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
-          </div>
-          <button class="icon-btn" style="color:var(--primary);"><i class="ri-user-add-line"></i></button>
-        </li>`;
-    })
-    .join("");
+  const users = allPresenceUsers.filter(u => u.uid !== ME?.uid && !existingMembers.has(u.uid) && (!q || u.name.toLowerCase().includes(q)));
+  if (!users.length) { gsAddMemberList.innerHTML = `<li class="modal-empty">No users to add</li>`; return; }
+  gsAddMemberList.innerHTML = users.map(u => {
+    const color = colorFor(u.name);
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
+    return `
+      <li class="modal-user-item" data-uid="${u.uid}">
+        <div class="modal-user-av" style="background:${color};">${av}
+          <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+        </div>
+        <div class="modal-user-info">
+          <div class="modal-user-name">${escHtml(u.name)}</div>
+          <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
+        </div>
+        <button class="icon-btn" style="color:var(--primary);"><i class="ri-user-add-line"></i></button>
+      </li>`;
+  }).join("");
 
-  gsAddMemberList.querySelectorAll(".modal-user-item").forEach((el) => {
+  gsAddMemberList.querySelectorAll(".modal-user-item").forEach(el => {
     el.addEventListener("click", async () => {
       const uid = el.dataset.uid;
       const grp2 = activeRoomMeta.groupData;
@@ -915,28 +1131,16 @@ function renderGsAddMembers(q) {
   });
 }
 
-gsAddMemberSearch?.addEventListener("input", () => {
-  renderGsAddMembers(gsAddMemberSearch.value.toLowerCase());
-});
-
-groupSettingsModalClose?.addEventListener("click", () =>
-  groupSettingsModal?.classList.add("hidden"),
-);
-groupSettingsCancel?.addEventListener("click", () =>
-  groupSettingsModal?.classList.add("hidden"),
-);
-groupSettingsModal?.addEventListener("click", (e) => {
-  if (e.target === groupSettingsModal) groupSettingsModal.classList.add("hidden");
-});
+gsAddMemberSearch?.addEventListener("input", () => renderGsAddMembers(gsAddMemberSearch.value.toLowerCase()));
+groupSettingsModalClose?.addEventListener("click", () => groupSettingsModal?.classList.add("hidden"));
+groupSettingsCancel?.addEventListener("click", () => groupSettingsModal?.classList.add("hidden"));
+groupSettingsModal?.addEventListener("click", (e) => { if (e.target === groupSettingsModal) groupSettingsModal.classList.add("hidden"); });
 
 groupSettingsSave?.addEventListener("click", async () => {
   const grp = activeRoomMeta.groupData;
   if (!grp) return;
   const newName = gsGroupName?.value.trim();
-  if (!newName) {
-    showToast("Group name cannot be empty", "warning");
-    return;
-  }
+  if (!newName) { showToast("Group name cannot be empty", "warning"); return; }
   await updateDoc(doc(db, "groups", grp.id), { name: newName });
   if (chName) chName.textContent = newName;
   if (ipName) ipName.textContent = newName;
@@ -948,22 +1152,19 @@ groupSettingsSave?.addEventListener("click", async () => {
 gsDeleteGroup?.addEventListener("click", async () => {
   const grp = activeRoomMeta.groupData;
   if (!grp) return;
-  if (!confirm(`Delete group "${grp.name}"? This will remove all messages and cannot be undone.`)) return;
+  if (!confirm(`Delete group "${grp.name}"? This cannot be undone.`)) return;
   try {
     const snap = await getDocs(collection(db, "rooms", `group__${grp.id}`, "messages"));
-    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
     await deleteDoc(doc(db, "groups", grp.id));
     groupSettingsModal?.classList.add("hidden");
     activeRoomId = null;
-    // ── FIX: Use classList instead of style.display for consistent behavior
     chatView.classList.add("hidden");
     chatEmpty.classList.remove("hidden");
     chatEmpty.style.display = "";
     mobileChatClose();
     showToast("Group deleted", "success");
-  } catch (err) {
-    showToast("Failed to delete group: " + err.message, "error");
-  }
+  } catch (err) { showToast("Failed to delete group: " + err.message, "error"); }
 });
 
 async function kickMemberFromGroup(groupId, uid) {
@@ -972,68 +1173,44 @@ async function kickMemberFromGroup(groupId, uid) {
     const snap = await getDoc(grpRef);
     if (!snap.exists()) return;
     const data = snap.data();
-    const newMembers = (data.members || []).filter((m) => m !== uid);
+    const newMembers = (data.members || []).filter(m => m !== uid);
     await updateDoc(grpRef, { members: newMembers });
     if (activeRoomMeta.groupData) activeRoomMeta.groupData.members = newMembers;
     showToast("Member removed from group", "success");
     renderGsMembers(activeRoomMeta.groupData);
     renderGsAddMembers("");
-  } catch (err) {
-    showToast("Failed to remove member: " + err.message, "error");
-  }
+  } catch (err) { showToast("Failed to remove member: " + err.message, "error"); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CONTACTS LIST
+// CONTACTS LIST (PINNED)
 // ═══════════════════════════════════════════════════════════════════════════
 function renderContactsList() {
   if (!pinnedList) return;
   pinnedList.innerHTML = "";
 
-  // General chat — always pinned
   const generalLi = document.createElement("li");
-  generalLi.innerHTML = buildChatItemHtml(
-    {
-      id: ROOM_GENERAL,
-      name: "General Chat",
-      avatar: "",
-      preview: "Public room — everyone can chat",
-      time: "",
-      unread: 0,
-      online: true,
-      isPinned: true,
-    },
-    activeRoomId === ROOM_GENERAL,
-  );
+  generalLi.innerHTML = buildChatItemHtml({
+    id: ROOM_GENERAL, name: getGeneralChatName(), avatar: "",
+    preview: "Public room — everyone can chat", time: "", unread: 0, online: true, isPinned: true,
+  }, activeRoomId === ROOM_GENERAL);
   const generalEl = generalLi.firstElementChild;
   if (generalEl) {
     pinnedList.appendChild(generalEl);
     generalEl.addEventListener("click", () => {
-      openRoom(ROOM_GENERAL, "General Chat", null, true, null, false);
+      openRoom(ROOM_GENERAL, getGeneralChatName(), null, true, null, false);
       highlightContact(ROOM_GENERAL);
       mobileChatOpen();
     });
   }
 
-  // Pinned DM users
-  const pinnedOthers = allPresenceUsers.filter(
-    (u) => u.uid !== ME?.uid && pinnedChats.has(u.uid),
-  );
-  pinnedOthers.forEach((u) => {
+  const pinnedOthers = allPresenceUsers.filter(u => u.uid !== ME?.uid && pinnedChats.has(u.uid));
+  pinnedOthers.forEach(u => {
     const li = document.createElement("li");
-    li.innerHTML = buildChatItemHtml(
-      {
-        id: u.uid,
-        name: u.name,
-        avatar: u.avatar,
-        preview: u.status || "Say hello!",
-        time: "",
-        unread: 0,
-        online: u.online,
-        isPinned: true,
-      },
-      activeRoomId === getRoomId(ME.uid, u.uid),
-    );
+    li.innerHTML = buildChatItemHtml({
+      id: u.uid, name: u.name, avatar: u.avatar,
+      preview: u.status || "Say hello!", time: "", unread: 0, online: u.online, isPinned: true,
+    }, activeRoomId === getRoomId(ME.uid, u.uid));
     const el = li.firstElementChild;
     if (el) {
       pinnedList.appendChild(el);
@@ -1047,15 +1224,11 @@ function renderContactsList() {
   });
 }
 
-function buildChatItemHtml(
-  { id, name, avatar, preview, time, unread, online, isPinned },
-  active = false,
-) {
+function buildChatItemHtml({ id, name, avatar, preview, time, unread, online, isPinned }, active = false) {
   const color = colorFor(name);
   const avatarHtml = avatar
     ? `<img src="${escHtml(avatar)}" alt="${escHtml(name)}" />`
     : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-weight:700;font-size:17px;color:white;">${escHtml(name.charAt(0).toUpperCase())}</span>`;
-
   return `
     <li class="chat-item ${active ? "active" : ""}" data-id="${id}">
       <div class="ci-avatar-wrap">
@@ -1063,10 +1236,7 @@ function buildChatItemHtml(
         <span class="ci-presence ${online ? "online" : "offline"}"></span>
       </div>
       <div class="ci-info">
-        <div class="ci-name">
-          ${escHtml(name)}
-          ${isPinned ? `<i class="ri-pushpin-fill ci-pin-icon"></i>` : ""}
-        </div>
+        <div class="ci-name">${escHtml(name)} ${isPinned ? `<i class="ri-pushpin-fill ci-pin-icon"></i>` : ""}</div>
         <div class="ci-preview">${escHtml(preview)}</div>
       </div>
       <div class="ci-meta">
@@ -1077,7 +1247,7 @@ function buildChatItemHtml(
 }
 
 function highlightContact(id) {
-  document.querySelectorAll(".chat-item").forEach((el) => {
+  document.querySelectorAll(".chat-item").forEach(el => {
     el.classList.toggle("active", el.dataset.id === id);
   });
 }
@@ -1091,94 +1261,89 @@ function renderOnlineStrip(users) {
     onlineStrip.innerHTML = `<span style="font-size:12px;color:var(--text-grey);">No one online yet</span>`;
     return;
   }
-  onlineStrip.innerHTML = users
-    .map((u) => {
-      const color = colorFor(u.name);
-      const av = u.avatar
-        ? `<img src="${escHtml(u.avatar)}" alt="${escHtml(u.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-        : u.name.charAt(0).toUpperCase();
-      return `
-        <div class="online-pill" title="${escHtml(u.name)}">
-          <div class="op-av-wrap">
-            <div class="op-av" style="background:${color};">${av}</div>
-            <div class="op-dot"></div>
-          </div>
-          <div class="op-name">${escHtml(u.name)}${u.uid === ME?.uid ? " (you)" : ""}</div>
-        </div>`;
-    })
-    .join("");
+  onlineStrip.innerHTML = users.map(u => {
+    const color = colorFor(u.name);
+    const av = u.avatar
+      ? `<img src="${escHtml(u.avatar)}" alt="${escHtml(u.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+      : u.name.charAt(0).toUpperCase();
+    return `
+      <div class="online-pill" title="${escHtml(u.name)}">
+        <div class="op-av-wrap">
+          <div class="op-av" style="background:${color};">${av}</div>
+          <div class="op-dot"></div>
+        </div>
+        <div class="op-name">${escHtml(u.name)}${u.uid === ME?.uid ? " (you)" : ""}</div>
+      </div>`;
+  }).join("");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RIGHT PANEL
+// ALL USERS PANEL
 // ═══════════════════════════════════════════════════════════════════════════
-function renderOnlinePanel(users) {
-  const others = users.filter((u) => u.uid !== ME?.uid);
-
-  if (!ipOnlineList) return;
-
-  if (!others.length) {
-    ipOnlineList.innerHTML = `<li class="ip-no-users">No users yet</li>`;
-  } else {
-    ipOnlineList.innerHTML = others
-      .map((u) => {
-        const color = colorFor(u.name);
-        const av = u.avatar
-          ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
-          : u.name.charAt(0).toUpperCase();
-        return `
-          <li>
-            <div class="ip-user-row">
-              <div class="ip-user-av-wrap">
-                <div class="ip-user-av" style="background:${color};">${av}</div>
-                ${u.online ? `<div class="ip-user-dot"></div>` : ""}
-              </div>
-              <div>
-                <div class="ip-user-name">${escHtml(u.name)}</div>
-                <div class="ip-user-label">${u.online ? "Online" : "Offline"}</div>
-              </div>
-            </div>
-          </li>`;
-      })
-      .join("");
-  }
-
+function renderAllUsersPanel(users) {
+  const others = users.filter(u => u.uid !== ME?.uid);
+  // ✅ FIX 2: Map use karo — duplicate uid entries prevent
+  const allUsersMap = new Map();
+  others.forEach(u => {
+    allUsersMap.set(u.uid, { uid: u.uid, name: u.name, avatar: u.avatar, status: u.status, online: u.online });
+  });
+  existingDmRooms.forEach(r => {
+    if (!allUsersMap.has(r.uid) && r.uid !== ME?.uid) {
+      allUsersMap.set(r.uid, { uid: r.uid, name: r.name || r.uid, avatar: r.avatar || "", status: r.status || "", online: false });
+    }
+  });
+  const allUsers = Array.from(allUsersMap.values());
   if (!allChatList) return;
-
-  if (others.length) {
-    allChatList.innerHTML = others
-      .map((u) => {
-        const isPinned = pinnedChats.has(u.uid);
-        return buildChatItemHtml(
-          {
-            id: u.uid,
-            name: u.name,
-            avatar: u.avatar,
-            preview: u.status || "Say hello!",
-            time: "",
-            unread: 0,
-            online: u.online,
-            isPinned,
-          },
-          activeRoomId === getRoomId(ME?.uid, u.uid),
-        );
-      })
-      .join("");
-
-    allChatList.querySelectorAll(".chat-item").forEach((el) => {
-      el.addEventListener("click", () => {
-        const uid = el.dataset.id;
-        const user = allPresenceUsers.find((u) => u.uid === uid);
-        if (!user) return;
-        const roomId = getRoomId(ME.uid, uid);
-        openRoom(roomId, user.name, user.avatar, false, user, false);
-        highlightContact(uid);
-        mobileChatOpen();
-      });
-    });
-  } else {
-    allChatList.innerHTML = `<li style="padding:10px 18px;font-size:13px;color:var(--text-grey);">No other users found.</li>`;
+  if (!allUsers.length) {
+    allChatList.innerHTML = `<li style="padding:10px 18px;font-size:13px;color:var(--text-grey);">No other users found. Invite friends to join!</li>`;
+    return;
   }
+  allUsers.sort((a, b) => {
+    if (a.online && !b.online) return -1;
+    if (!a.online && b.online) return 1;
+    const aRoom = existingDmRooms.find(r => r.uid === a.uid);
+    const bRoom = existingDmRooms.find(r => r.uid === b.uid);
+    const aTs = aRoom?.lastTs?.getTime() || 0;
+    const bTs = bRoom?.lastTs?.getTime() || 0;
+    return bTs - aTs;
+  });
+  allChatList.innerHTML = allUsers.map(u => {
+    const isPinned = pinnedChats.has(u.uid);
+    const dmRoom = existingDmRooms.find(r => r.uid === u.uid);
+    const preview = dmRoom?.lastText || u.status || "Tap to start chatting";
+    const timeStr = dmRoom?.lastTs ? formatChatTime(dmRoom.lastTs) : "";
+    const currentRoomId = getRoomId(ME?.uid, u.uid);
+    return buildChatItemHtml({
+      id: u.uid, name: u.name, avatar: u.avatar,
+      preview, time: timeStr, unread: 0, online: u.online, isPinned,
+    }, activeRoomId === currentRoomId);
+  }).join("");
+
+  allChatList.querySelectorAll(".chat-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const uid = el.dataset.id;
+      const user = allUsers.find(u => u.uid === uid);
+      if (!user) return;
+      const roomId = getRoomId(ME.uid, uid);
+      startDmWithUser(roomId, uid, user);
+    });
+  });
+}
+
+async function startDmWithUser(roomId, otherUid, user) {
+  // ✅ FIX 2: existingDmRooms me push se pehle uid check (not roomId)
+  const alreadyKnown = existingDmRooms.find(r => r.uid === otherUid);
+  if (!alreadyKnown) {
+    existingDmRooms.push({
+      uid: otherUid, roomId, name: user.name,
+      avatar: user.avatar || "", status: user.status || "",
+      online: user.online, lastText: "", lastTs: null,
+    });
+    registerDmRoom(roomId).catch(e => console.warn("registerDmRoom bg:", e));
+  }
+  openRoom(roomId, user.name, user.avatar, false, user, false);
+  highlightContact(otherUid);
+  mobileChatOpen();
 }
 
 function getRoomId(a, b) {
@@ -1187,50 +1352,17 @@ function getRoomId(a, b) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OPEN ROOM
-// ─────────────────────────────────────────────────────────────────────────
-// KEY FIX: Removed `chatView.style.display = 'flex'` inline style.
-//
-// The problem: setting an inline style creates a "cascading conflict" where
-// the element has BOTH:
-//   - CSS rule: .chat-view { display: flex; height: 100% }
-//   - Inline style: style="display: flex"
-//
-// The inline style wins for the `display` property but does NOT carry over
-// the other layout properties (height:100%, flex:1, min-height:0) that are
-// defined in the CSS rule. On some mobile browsers this causes the element
-// to render as a flex container but WITHOUT the height constraint, so it
-// expands to its content height and overflows — pushing the input bar
-// below the visible viewport.
-//
-// Solution: remove the inline style entirely. When `.hidden` is removed,
-// the CSS class `.chat-view { display: flex; height: 100%; ... }` applies
-// cleanly with all properties intact.
 // ═══════════════════════════════════════════════════════════════════════════
-function openRoom(
-  roomId,
-  name,
-  avatar,
-  isPublic,
-  targetUser = null,
-  isGroup = false,
-  groupData = null,
-) {
+function openRoom(roomId, name, avatar, isPublic, targetUser = null, isGroup = false, groupData = null) {
   activeRoomId = roomId;
   activeRoomMeta = { name, isPublic, isGroup, groupData };
 
-  // ── FIX: Use classList to show/hide — no inline style overrides ──
-  // Hide empty state
   chatEmpty.classList.add("hidden");
-
-  // Show chat view — remove .hidden and let CSS .chat-view rule apply
-  // DO NOT set chatView.style.display here — it fights with height:100%
   chatView.classList.remove("hidden");
-  // Clear any stale inline display style that may have been set previously
   chatView.style.display = "";
 
   buildAvatarEl(chAvatar, name, avatar || "");
-  chAvatar.style.width = "42px";
-  chAvatar.style.height = "42px";
+  chAvatar.style.width = "42px"; chAvatar.style.height = "42px";
   chName.textContent = name;
 
   if (isPublic) {
@@ -1242,10 +1374,7 @@ function openRoom(
     chStatus.textContent = `${memberCount} members`;
     chStatus.className = "ch-status";
     chPresence.className = "ch-presence online";
-    if (groupSettingsBtn) {
-      const isAdmin = groupData?.adminUid === ME?.uid;
-      groupSettingsBtn.classList.toggle("hidden", !isAdmin);
-    }
+    if (groupSettingsBtn) groupSettingsBtn.classList.toggle("hidden", groupData?.adminUid !== ME?.uid);
   } else {
     const isOnline = targetUser?.online ?? false;
     chStatus.textContent = isOnline ? "Online" : "Offline";
@@ -1253,23 +1382,7 @@ function openRoom(
     chPresence.className = `ch-presence ${isOnline ? "online" : "offline"}`;
     if (groupSettingsBtn) groupSettingsBtn.classList.add("hidden");
   }
-
   if (!isGroup && groupSettingsBtn) groupSettingsBtn.classList.add("hidden");
-
-  buildAvatarEl(ipAvatar, name, avatar || "");
-  ipAvatar.style.width = "72px";
-  ipAvatar.style.height = "72px";
-  ipName.textContent = name;
-  ipStatus.textContent = isGroup
-    ? `Group · ${groupData?.members?.length || 0} members`
-    : isPublic
-      ? "Public room"
-      : targetUser?.status || "";
-
-  if (ipGroupMembersSection) {
-    ipGroupMembersSection.classList.toggle("hidden", !isGroup);
-    if (isGroup && groupData) renderGroupMembersPanel(groupData);
-  }
 
   if (msgUnsub) msgUnsub();
   if (typingUnsub) typingUnsub();
@@ -1279,76 +1392,20 @@ function openRoom(
   closeChatSearch();
   closeMoreDropdown();
   updatePinMenuLabel();
-
   listenMessages(roomId);
   listenTyping(roomId);
-}
-
-function renderGroupMembersPanel(grp) {
-  if (!ipGroupMembersList) return;
-  const members = grp.members || [];
-  const isAdmin = grp.adminUid === ME?.uid;
-  ipGroupMembersList.innerHTML = members
-    .map((uid) => {
-      const u = allPresenceUsers.find((p) => p.uid === uid) || {
-        uid, name: uid, avatar: "", online: false,
-      };
-      const color = colorFor(u.name);
-      const av = u.avatar
-        ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
-        : u.name.charAt(0).toUpperCase();
-      const memberIsAdmin = uid === grp.adminUid;
-      const canKick = isAdmin && !memberIsAdmin && uid !== ME?.uid;
-      return `
-        <li>
-          <div class="ip-member-row">
-            <div class="ip-user-av-wrap">
-              <div class="ip-user-av" style="background:${color};">${av}</div>
-              ${u.online ? `<div class="ip-user-dot"></div>` : ""}
-            </div>
-            <div>
-              <div class="ip-user-name">${escHtml(u.name)} ${memberIsAdmin ? "👑" : ""}</div>
-              <div class="ip-user-label">${u.online ? "Online" : "Offline"}</div>
-            </div>
-            ${canKick ? `<button class="ip-member-kick" data-uid="${uid}" title="Remove from group"><i class="ri-user-unfollow-line"></i></button>` : ""}
-          </div>
-        </li>`;
-    })
-    .join("");
-
-  ipGroupMembersList.querySelectorAll(".ip-member-kick").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const uid = btn.dataset.uid;
-      const u = allPresenceUsers.find((p) => p.uid === uid);
-      if (!confirm(`Remove ${u?.name || uid} from group?`)) return;
-      await kickMemberFromGroup(grp.id, uid);
-      renderGroupMembersPanel(grp);
-    });
-  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MORE MENU
 // ═══════════════════════════════════════════════════════════════════════════
-function openMoreDropdown() {
-  moreDropdown.classList.remove("hidden");
-  moreDropdownOpen = true;
-  updatePinMenuLabel();
-}
-
-function closeMoreDropdown() {
-  moreDropdown?.classList.add("hidden");
-  moreDropdownOpen = false;
-}
+function openMoreDropdown() { moreDropdown.classList.remove("hidden"); moreDropdownOpen = true; updatePinMenuLabel(); }
+function closeMoreDropdown() { moreDropdown?.classList.add("hidden"); moreDropdownOpen = false; }
 
 moreMenuBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   if (moreDropdownOpen) closeMoreDropdown();
-  else {
-    closeEmojiPanel();
-    closeAttachMenu();
-    openMoreDropdown();
-  }
+  else { closeEmojiPanel(); closeAttachMenu(); openMoreDropdown(); }
 });
 moreDropdown?.addEventListener("click", (e) => e.stopPropagation());
 
@@ -1361,24 +1418,29 @@ mdSearch?.addEventListener("click", () => {
 mdPinChat?.addEventListener("click", () => {
   closeMoreDropdown();
   if (!activeRoomId) return;
-  const pinId =
-    activeRoomId === ROOM_GENERAL
-      ? ROOM_GENERAL
-      : activeRoomId.includes("__")
-        ? activeRoomId.split("__").find((p) => p !== ME.uid) || activeRoomId
-        : activeRoomId;
+  const pinId = activeRoomId === ROOM_GENERAL ? ROOM_GENERAL
+    : activeRoomId.includes("__") ? activeRoomId.split("__").find(p => p !== ME.uid) || activeRoomId
+      : activeRoomId;
   togglePin(pinId);
 });
 
-mdSelectMsg?.addEventListener("click", () => {
-  closeMoreDropdown();
-  enterSelectMode();
-});
+mdSelectMsg?.addEventListener("click", () => { closeMoreDropdown(); enterSelectMode(); });
 
 mdEditNick?.addEventListener("click", () => {
   closeMoreDropdown();
+  if (editNickModalTitle) editNickModalTitle.textContent = "Edit Nickname";
   editNickModal.classList.remove("hidden");
   editNickInput.value = chName.textContent;
+  editNickInput.placeholder = "Enter nickname…";
+  editNickInput.focus();
+});
+
+mdRenameChat?.addEventListener("click", () => {
+  closeMoreDropdown();
+  if (editNickModalTitle) editNickModalTitle.textContent = "Rename Chat";
+  editNickModal.classList.remove("hidden");
+  editNickInput.value = chName.textContent;
+  editNickInput.placeholder = activeRoomMeta.isPublic ? "Rename General Chat…" : "Enter nickname…";
   editNickInput.focus();
 });
 
@@ -1388,15 +1450,9 @@ mdClearChat?.addEventListener("click", async () => {
   if (!confirm("Clear all messages in this chat?")) return;
   try {
     const snap = await getDocs(collection(db, "rooms", activeRoomId, "messages"));
-    await Promise.all(
-      snap.docs.map((d) =>
-        updateDoc(d.ref, { text: "", deleted: true, fileData: null }),
-      ),
-    );
+    await Promise.all(snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true, fileData: null })));
     showToast("Chat cleared", "success");
-  } catch {
-    showToast("Failed to clear chat", "error");
-  }
+  } catch { showToast("Failed to clear chat", "error"); }
 });
 
 mdDeleteChat?.addEventListener("click", async () => {
@@ -1405,13 +1461,12 @@ mdDeleteChat?.addEventListener("click", async () => {
   if (!confirm("Delete this entire chat? This cannot be undone.")) return;
   try {
     const snap = await getDocs(collection(db, "rooms", activeRoomId, "messages"));
-    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
-    const pinId =
-      activeRoomId === ROOM_GENERAL
-        ? ROOM_GENERAL
-        : activeRoomId.split("__").find((p) => p !== ME.uid);
+    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+    const pinId = activeRoomId === ROOM_GENERAL ? ROOM_GENERAL : activeRoomId.split("__").find(p => p !== ME.uid);
     pinnedChats.delete(pinId);
     savePinnedChats();
+    const idx = existingDmRooms.findIndex(r => r.roomId === activeRoomId);
+    if (idx !== -1) existingDmRooms.splice(idx, 1);
     activeRoomId = null;
     chatView.classList.add("hidden");
     chatEmpty.classList.remove("hidden");
@@ -1419,108 +1474,74 @@ mdDeleteChat?.addEventListener("click", async () => {
     mobileChatClose();
     renderContactsList();
     showToast("Chat deleted", "success");
-  } catch {
-    showToast("Failed to delete chat", "error");
-  }
+  } catch { showToast("Failed to delete chat", "error"); }
 });
 
-mdBlock?.addEventListener("click", () => {
-  closeMoreDropdown();
-  showToast("Block feature coming soon!", "warning");
-});
+mdBlock?.addEventListener("click", () => { closeMoreDropdown(); showToast("Block feature coming soon!", "warning"); });
 
 mdAddFav?.addEventListener("click", () => {
   closeMoreDropdown();
   if (!activeRoomId) return;
-  const favId =
-    activeRoomId === ROOM_GENERAL
-      ? ROOM_GENERAL
-      : activeRoomId.split("__").find((p) => p !== ME.uid) || activeRoomId;
+  const favId = activeRoomId === ROOM_GENERAL ? ROOM_GENERAL : activeRoomId.split("__").find(p => p !== ME.uid) || activeRoomId;
   if (favouriteChats.has(favId)) {
-    favouriteChats.delete(favId);
-    showToast("Removed from favourites", "success");
+    favouriteChats.delete(favId); showToast("Removed from favourites", "success");
     if (mdAddFav) mdAddFav.innerHTML = `<i class="ri-star-line"></i> Add to Fav`;
   } else {
-    favouriteChats.add(favId);
-    showToast("Added to favourites ⭐", "success");
+    favouriteChats.add(favId); showToast("Added to favourites ⭐", "success");
     if (mdAddFav) mdAddFav.innerHTML = `<i class="ri-star-fill"></i> Remove from Fav`;
   }
 });
 
 editNickClose?.addEventListener("click", () => editNickModal.classList.add("hidden"));
 editNickCancel?.addEventListener("click", () => editNickModal.classList.add("hidden"));
-editNickModal?.addEventListener("click", (e) => {
-  if (e.target === editNickModal) editNickModal.classList.add("hidden");
-});
+editNickModal?.addEventListener("click", (e) => { if (e.target === editNickModal) editNickModal.classList.add("hidden"); });
+
 editNickSave?.addEventListener("click", () => {
   const nick = editNickInput.value.trim();
   if (!nick) return;
   chName.textContent = nick;
-  ipName.textContent = nick;
+  if (ipName) ipName.textContent = nick;
+  if (activeRoomId === ROOM_GENERAL) {
+    localStorage.setItem("nt_general_name", nick);
+    renderContactsList();
+  }
   editNickModal.classList.add("hidden");
-  showToast(`Nickname set to "${nick}"`, "success");
+  showToast(`Renamed to "${nick}"`, "success");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SELECT MODE
 // ═══════════════════════════════════════════════════════════════════════════
 function enterSelectMode() {
-  selectMode = true;
-  selectedMsgIds.clear();
+  selectMode = true; selectedMsgIds.clear();
   messagesArea.classList.add("select-mode");
   selectBar.classList.remove("hidden");
   selectCount.textContent = "0 selected";
-  messagesArea.querySelectorAll(".msg-row").forEach((row) => {
-    row.addEventListener("click", handleSelectClick);
-  });
+  messagesArea.querySelectorAll(".msg-row").forEach(row => row.addEventListener("click", handleSelectClick));
 }
-
 function exitSelectMode() {
-  selectMode = false;
-  selectedMsgIds.clear();
+  selectMode = false; selectedMsgIds.clear();
   messagesArea.classList.remove("select-mode");
   selectBar.classList.add("hidden");
-  messagesArea.querySelectorAll(".msg-row").forEach((row) => {
-    row.classList.remove("msg-selected");
-    row.removeEventListener("click", handleSelectClick);
-  });
+  messagesArea.querySelectorAll(".msg-row").forEach(row => { row.classList.remove("msg-selected"); row.removeEventListener("click", handleSelectClick); });
 }
-
 function handleSelectClick(e) {
-  const row = e.currentTarget;
-  const id = row.dataset.id;
-  if (selectedMsgIds.has(id)) {
-    selectedMsgIds.delete(id);
-    row.classList.remove("msg-selected");
-  } else {
-    selectedMsgIds.add(id);
-    row.classList.add("msg-selected");
-  }
+  const row = e.currentTarget, id = row.dataset.id;
+  if (selectedMsgIds.has(id)) { selectedMsgIds.delete(id); row.classList.remove("msg-selected"); }
+  else { selectedMsgIds.add(id); row.classList.add("msg-selected"); }
   selectCount.textContent = `${selectedMsgIds.size} selected`;
 }
-
 selectCancel?.addEventListener("click", exitSelectMode);
-
 selectDelete?.addEventListener("click", async () => {
   if (!selectedMsgIds.size) return;
   if (!confirm(`Delete ${selectedMsgIds.size} message(s)?`)) return;
   for (const id of selectedMsgIds) {
-    try {
-      await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), {
-        text: "",
-        deleted: true,
-        fileData: null,
-      });
-    } catch (_) { }
+    try { await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null }); } catch (_) { }
   }
   showToast(`${selectedMsgIds.size} message(s) deleted`, "success");
   exitSelectMode();
 });
-
-selectForward?.addEventListener("click", () => {
-  showToast("Forward coming soon!", "warning");
-  exitSelectMode();
-});
+selectForward?.addEventListener("click", () => { showToast("Forward coming soon!", "warning"); exitSelectMode(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MESSAGES
@@ -1529,31 +1550,43 @@ let lastRenderDate = null;
 
 function listenMessages(roomId) {
   lastRenderDate = null;
-  const q = query(
-    collection(db, "rooms", roomId, "messages"),
-    orderBy("createdAt", "asc"),
-  );
+  const q = query(collection(db, "rooms", roomId, "messages"), orderBy("createdAt", "asc"));
   msgUnsub = onSnapshot(q, (snap) => {
-    snap.docChanges().forEach((change) => {
-      if (change.type === "added")
-        renderMessage(change.doc.data(), change.doc.id);
-      else if (change.type === "modified")
-        updateRenderedMessage(change.doc.data(), change.doc.id);
-      else if (change.type === "removed")
-        removeRenderedMessage(change.doc.id);
+    snap.docChanges().forEach(change => {
+      if (change.type === "added") {
+        const data = change.doc.data();
+        if (data.uid === "system") return;
+        renderMessage(data, change.doc.id);
+        updateDmRoomPreview(roomId, data);
+      }
+      else if (change.type === "modified") updateRenderedMessage(change.doc.data(), change.doc.id);
+      else if (change.type === "removed") removeRenderedMessage(change.doc.id);
     });
     scrollBottom();
   });
+}
+
+function updateDmRoomPreview(roomId, data) {
+  if (!data || data.uid === "system" || data.deleted) return;
+  const parts = roomId.split("__");
+  const otherUid = parts.find(p => p !== ME?.uid);
+  if (!otherUid) return;
+  const room = existingDmRooms.find(r => r.uid === otherUid);
+  if (room) {
+    room.lastText = data.type === "image" ? "📷 Image"
+      : data.type === "file" ? `📎 ${data.fileName || "File"}`
+        : data.type === "sticker" ? data.text
+          : (data.text || "");
+    room.lastTs = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+  }
 }
 
 function renderMessage(data, id) {
   const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
   const isMine = data.uid === ME?.uid;
   const timeStr = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dateStr = ts.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
-  const dateStr = ts.toLocaleDateString([], {
-    weekday: "short", month: "short", day: "numeric",
-  });
   if (dateStr !== lastRenderDate) {
     lastRenderDate = dateStr;
     const div = document.createElement("div");
@@ -1567,23 +1600,11 @@ function renderMessage(data, id) {
     row.className = `msg-row ${isMine ? "sent" : "received"}`;
     row.dataset.id = id;
     const color = colorFor(data.name || "?");
-    const avHtml = data.avatar
-      ? `<img src="${escHtml(data.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
-      : (data.name || "?").charAt(0).toUpperCase();
+    const avHtml = data.avatar ? `<img src="${escHtml(data.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : (data.name || "?").charAt(0).toUpperCase();
     if (isMine) {
-      row.innerHTML = `
-        <div class="msg-col">
-          <div class="msg-sticker">${escHtml(data.text)}</div>
-          <div class="msg-meta">${timeStr}</div>
-        </div>`;
+      row.innerHTML = `<div class="msg-col"><div class="msg-sticker">${escHtml(data.text)}</div><div class="msg-meta">${timeStr}</div></div>`;
     } else {
-      row.innerHTML = `
-        <div class="msg-av" style="background:${color};">${avHtml}</div>
-        <div class="msg-col">
-          <div class="msg-sender-name">${escHtml(data.name || "")}</div>
-          <div class="msg-sticker">${escHtml(data.text)}</div>
-          <div class="msg-meta">${timeStr}</div>
-        </div>`;
+      row.innerHTML = `<div class="msg-av" style="background:${color};">${avHtml}</div><div class="msg-col"><div class="msg-sender-name">${escHtml(data.name || "")}</div><div class="msg-sticker">${escHtml(data.text)}</div><div class="msg-meta">${timeStr}</div></div>`;
     }
     messagesArea.appendChild(row);
     return;
@@ -1594,19 +1615,14 @@ function renderMessage(data, id) {
   row.dataset.id = id;
 
   const color = colorFor(data.name || "?");
-  const avHtml = data.avatar
-    ? `<img src="${escHtml(data.avatar)}" style="width:100%;height:100%;object-fit:cover;" />`
-    : (data.name || "?").charAt(0).toUpperCase();
-
+  const avHtml = data.avatar ? `<img src="${escHtml(data.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : (data.name || "?").charAt(0).toUpperCase();
   const bubbleContent = buildBubbleContent(data, timeStr, isMine);
   const canEdit = isMine && data.type === "text" && !data.deleted && !data.edited;
-  const actionsHtml =
-    isMine && !data.deleted
-      ? `<div class="msg-actions">
-           ${canEdit ? `<button class="msg-act-btn" data-action="edit" data-id="${id}" title="Edit"><i class="ri-edit-line"></i></button>` : ""}
-           <button class="msg-act-btn delete" data-action="delete" data-id="${id}" title="Delete"><i class="ri-delete-bin-line"></i></button>
-         </div>`
-      : "";
+  const actionsHtml = isMine && !data.deleted
+    ? `<div class="msg-actions">
+         ${canEdit ? `<button class="msg-act-btn" data-action="edit" data-id="${id}" title="Edit"><i class="ri-edit-line"></i></button>` : ""}
+         <button class="msg-act-btn delete" data-action="delete" data-id="${id}" title="Delete"><i class="ri-delete-bin-line"></i></button>
+       </div>` : "";
 
   if (isMine) {
     row.innerHTML = `${actionsHtml}<div class="msg-col"><div class="bubble">${bubbleContent}</div></div>`;
@@ -1624,19 +1640,22 @@ function renderMessage(data, id) {
   bindMsgActions(row, data, id);
 }
 
+// ✅ FIX 5: buildBubbleContent — image render karta hai fileUrl (Storage URL) se
 function buildBubbleContent(data, timeStr, isMine) {
-  if (data.deleted) {
-    return `<span>🚫 This message was deleted</span><div class="msg-meta">${timeStr}</div>`;
-  }
-  const editedLabel = data.edited
-    ? `<span class="msg-edited">(edited)</span>`
-    : "";
+  if (data.deleted) return `<span>🚫 This message was deleted</span><div class="msg-meta">${timeStr}</div>`;
+  const editedLabel = data.edited ? `<span class="msg-edited">(edited)</span>` : "";
 
   if (data.type === "image") {
+    // ✅ fileUrl = Firebase Storage download URL (permanent)
+    // fileData = legacy base64 (purani messages ke liye fallback)
+    const imgSrc = escHtml(data.fileUrl || data.fileData || "");
+    const fileName = escHtml(data.fileName || "image.png");
+    if (!imgSrc) return `<span>🖼️ Image unavailable</span><div class="msg-meta">${timeStr}</div>`;
     return `
       <div class="msg-img-wrap">
-        <img class="msg-img" src="${escHtml(data.fileData)}" alt="${escHtml(data.fileName || "image")}" />
-        <a class="msg-img-download" href="${escHtml(data.fileData)}" download="${escHtml(data.fileName || "image.png")}" title="Download" onclick="event.stopPropagation()">
+        <img class="msg-img" src="${imgSrc}" alt="${fileName}" loading="lazy"
+             onerror="this.style.opacity='0.4';this.title='Image failed to load';" />
+        <a class="msg-img-download" href="${imgSrc}" download="${fileName}" title="Download" target="_blank" onclick="event.stopPropagation()">
           <i class="ri-download-2-line"></i>
         </a>
       </div>
@@ -1644,18 +1663,19 @@ function buildBubbleContent(data, timeStr, isMine) {
   }
 
   if (data.type === "file") {
+    // ✅ fileUrl = Storage download URL; fileData = legacy base64 fallback
+    const fileSrc = escHtml(data.fileUrl || data.fileData || "");
     const icon = getFileIcon(data.fileName || "");
     const sizeStr = formatFileSize(data.fileSize || 0);
+    if (!fileSrc) return `<span>📎 File unavailable</span><div class="msg-meta">${timeStr}</div>`;
     return `
-      <a class="msg-file" href="${escHtml(data.fileData)}" download="${escHtml(data.fileName || "file")}" target="_blank">
+      <a class="msg-file" href="${fileSrc}" download="${escHtml(data.fileName || "file")}" target="_blank">
         <i class="${icon}"></i>
         <div class="msg-file-info">
           <div class="msg-file-name">${escHtml(data.fileName || "File")}</div>
           <div class="msg-file-size">${sizeStr}</div>
         </div>
-        <span class="msg-file-download" title="Download" onclick="event.stopPropagation()">
-          <i class="ri-download-2-line"></i>
-        </span>
+        <span class="msg-file-download" title="Download" onclick="event.stopPropagation()"><i class="ri-download-2-line"></i></span>
       </a>
       <div class="msg-meta">${timeStr}${editedLabel}${isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : ""}</div>`;
   }
@@ -1664,15 +1684,12 @@ function buildBubbleContent(data, timeStr, isMine) {
 }
 
 function bindMsgActions(row, data, id) {
-  row.querySelectorAll(".msg-act-btn").forEach((btn) => {
+  row.querySelectorAll(".msg-act-btn").forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const action = btn.dataset.action;
       if (action === "edit") {
-        if (data.edited) {
-          showToast("Messages can only be edited once", "warning");
-          return;
-        }
+        if (data.edited) { showToast("Messages can only be edited once", "warning"); return; }
         openEditModal(id, data.text);
       }
       if (action === "delete") confirmDeleteMsg(id);
@@ -1689,16 +1706,11 @@ function updateRenderedMessage(data, id) {
   const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
   const timeStr = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   bubble.innerHTML = buildBubbleContent(data, timeStr, isMine);
-  if (data.deleted) bubble.classList.add("deleted-msg");
-  else bubble.classList.remove("deleted-msg");
-  if (data.edited || data.deleted) {
-    row.querySelector('.msg-act-btn[data-action="edit"]')?.remove();
-  }
+  if (data.deleted) bubble.classList.add("deleted-msg"); else bubble.classList.remove("deleted-msg");
+  if (data.edited || data.deleted) row.querySelector('.msg-act-btn[data-action="edit"]')?.remove();
 }
 
-function removeRenderedMessage(id) {
-  messagesArea.querySelector(`.msg-row[data-id="${id}"]`)?.remove();
-}
+function removeRenderedMessage(id) { messagesArea.querySelector(`.msg-row[data-id="${id}"]`)?.remove(); }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EDIT MODAL
@@ -1711,11 +1723,7 @@ function openEditModal(id, currentText) {
   editMsgModal.classList.remove("hidden");
   editMsgInput.focus();
 }
-
-function closeEditModal() {
-  editMsgModal.classList.add("hidden");
-  editingMsgId = null;
-}
+function closeEditModal() { editMsgModal.classList.add("hidden"); editingMsgId = null; }
 
 editMsgClose?.addEventListener("click", closeEditModal);
 editMsgCancel?.addEventListener("click", closeEditModal);
@@ -1723,35 +1731,19 @@ editMsgSave?.addEventListener("click", async () => {
   const newText = editMsgInput.value.trim();
   if (!newText || !editingMsgId || !activeRoomId) return;
   try {
-    await updateDoc(doc(db, "rooms", activeRoomId, "messages", editingMsgId), {
-      text: newText,
-      edited: true,
-    });
+    await updateDoc(doc(db, "rooms", activeRoomId, "messages", editingMsgId), { text: newText, edited: true });
     showToast("Message edited ✏️", "success");
-  } catch {
-    showToast("Edit failed", "error");
-  }
+  } catch { showToast("Edit failed", "error"); }
   closeEditModal();
 });
-editMsgModal?.addEventListener("click", (e) => {
-  if (e.target === editMsgModal) closeEditModal();
-});
+editMsgModal?.addEventListener("click", (e) => { if (e.target === editMsgModal) closeEditModal(); });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DELETE MESSAGE
-// ═══════════════════════════════════════════════════════════════════════════
 async function confirmDeleteMsg(id) {
   if (!confirm("Delete this message?")) return;
   try {
-    await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), {
-      text: "",
-      deleted: true,
-      fileData: null,
-    });
+    await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null, fileUrl: null });
     showToast("Message deleted", "success");
-  } catch {
-    showToast("Delete failed", "error");
-  }
+  } catch { showToast("Delete failed", "error"); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1763,38 +1755,50 @@ async function sendMessage() {
   if (!text) return;
   msgInput.value = "";
   clearMyTyping();
-  await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
-    uid: ME.uid,
-    name: ME.name,
-    avatar: ME.avatar,
-    text,
-    type: "text",
-    deleted: false,
-    edited: false,
-    createdAt: serverTimestamp(),
-  });
+  try {
+    await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
+      uid: ME.uid, name: ME.name, avatar: ME.avatar,
+      text, type: "text", deleted: false, edited: false, createdAt: serverTimestamp(),
+    });
+    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) {
+      registerDmRoom(activeRoomId).catch(() => { });
+    }
+  } catch (err) {
+    showToast("Failed to send message: " + err.message, "error");
+  }
 }
-
 sendBtn?.addEventListener("click", sendMessage);
 msgInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SEND FILE
+// ✅ FIX 4: SEND FILE — Firebase Storage upload + download URL save
 // ═══════════════════════════════════════════════════════════════════════════
 async function sendFile(file, msgType) {
   if (!ME || !activeRoomId || !file) return;
-  if (file.size > 3 * 1024 * 1024) {
-    showToast("File too large. Max 3 MB allowed.", "warning");
+
+  // File size limit: 10 MB (Storage ke liye base64 ki zaroorat nahi)
+  if (file.size > 10 * 1024 * 1024) {
+    showToast("File too large. Max 10 MB allowed.", "warning");
     return;
   }
+
   showToast("Uploading…", "success");
-  const reader = new FileReader();
-  reader.onload = async (e) => {
+
+  try {
+    // ✅ FIX 4: Unique path: rooms/{roomId}/{uid}/{timestamp}_{filename}
+    const uniqueName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const filePath = `rooms/${activeRoomId}/${ME.uid}/${uniqueName}`;
+    const fileRef = storageRef(storage, filePath);
+
+    // Upload file to Firebase Storage
+    const snapshot = await uploadBytes(fileRef, file);
+
+    // Download URL get karo (permanent public URL)
+    const downloadURL = await getDownloadURL(snapshot.ref);
+
+    // Firestore me message save karo — fileUrl = Storage URL
     await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
       uid: ME.uid,
       name: ME.name,
@@ -1803,13 +1807,23 @@ async function sendFile(file, msgType) {
       type: msgType === "image" ? "image" : "file",
       fileName: file.name,
       fileSize: file.size,
-      fileData: e.target.result,
+      fileUrl: downloadURL,   // ✅ Storage permanent URL
+      fileData: null,         // base64 ab nahi store karte
+      storagePath: filePath,  // deletion ke liye reference
       deleted: false,
       edited: false,
       createdAt: serverTimestamp(),
     });
-  };
-  reader.readAsDataURL(file);
+
+    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) {
+      registerDmRoom(activeRoomId).catch(() => { });
+    }
+
+    showToast("File sent! ✓", "success");
+  } catch (err) {
+    console.error("File upload error:", err);
+    showToast("Upload failed: " + err.message, "error");
+  }
 }
 
 imgFileInput?.addEventListener("change", () => {
@@ -1831,15 +1845,8 @@ anyFileInput?.addEventListener("change", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // ATTACH MENU
 // ═══════════════════════════════════════════════════════════════════════════
-attachBtn?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  attachMenu.classList.toggle("hidden");
-  closeEmojiPanel();
-  closeMoreDropdown();
-});
-function closeAttachMenu() {
-  attachMenu?.classList.add("hidden");
-}
+attachBtn?.addEventListener("click", (e) => { e.stopPropagation(); attachMenu.classList.toggle("hidden"); closeEmojiPanel(); closeMoreDropdown(); });
+function closeAttachMenu() { attachMenu?.classList.add("hidden"); }
 document.addEventListener("click", closeAttachMenu);
 attachMenu?.addEventListener("click", (e) => e.stopPropagation());
 
@@ -1852,10 +1859,7 @@ msgInput?.addEventListener("input", async () => {
   if (now - lastTypingSent > 1800) {
     lastTypingSent = now;
     await setDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid), {
-      uid: ME.uid,
-      name: ME.name,
-      avatar: ME.avatar,
-      ts: serverTimestamp(),
+      uid: ME.uid, name: ME.name, avatar: ME.avatar, ts: serverTimestamp(),
     });
   }
   clearTimeout(typingTimer);
@@ -1864,47 +1868,33 @@ msgInput?.addEventListener("input", async () => {
 
 async function clearMyTyping() {
   if (!ME || !activeRoomId) return;
-  try {
-    await deleteDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid));
-  } catch (_) { }
+  try { await deleteDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid)); } catch (_) { }
 }
 
 function listenTyping(roomId) {
-  typingUnsub = onSnapshot(
-    collection(db, "rooms", roomId, "typing"),
-    (snap) => {
-      const others = snap.docs.filter((d) => d.id !== ME?.uid).map((d) => d.data());
-      if (others.length) {
-        const t = others[0];
-        buildAvatarEl(typingAv, t.name, t.avatar || "");
-        typingAv.style.background = colorFor(t.name);
-        typingAv.style.width = "26px";
-        typingAv.style.height = "26px";
-        typingRow.classList.remove("hidden");
-        chStatus.textContent = `${t.name} is typing…`;
-        chStatus.className = "ch-status typing";
+  typingUnsub = onSnapshot(collection(db, "rooms", roomId, "typing"), (snap) => {
+    const others = snap.docs.filter(d => d.id !== ME?.uid).map(d => d.data());
+    if (others.length) {
+      const t = others[0];
+      buildAvatarEl(typingAv, t.name, t.avatar || "");
+      typingAv.style.background = colorFor(t.name);
+      typingAv.style.width = "26px"; typingAv.style.height = "26px";
+      typingRow.classList.remove("hidden");
+      chStatus.textContent = `${t.name} is typing…`;
+      chStatus.className = "ch-status typing";
+    } else {
+      typingRow.classList.add("hidden");
+      if (activeRoomMeta.isPublic) {
+        chStatus.textContent = "Public Room · All users"; chStatus.className = "ch-status";
+      } else if (activeRoomMeta.isGroup) {
+        chStatus.textContent = `${activeRoomMeta.groupData?.members?.length || 0} members`; chStatus.className = "ch-status";
       } else {
-        typingRow.classList.add("hidden");
-        if (activeRoomMeta.isPublic) {
-          chStatus.textContent = "Public Room · All users";
-          chStatus.className = "ch-status";
-        } else if (activeRoomMeta.isGroup) {
-          const memberCount = activeRoomMeta.groupData?.members?.length || 0;
-          chStatus.textContent = `${memberCount} members`;
-          chStatus.className = "ch-status";
-        } else {
-          const other = allPresenceUsers.find(
-            (u) => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId,
-          );
-          if (other) {
-            chStatus.textContent = other.online ? "Online" : "Offline";
-            chStatus.className = `ch-status ${other.online ? "online-status" : "offline-status"}`;
-          }
-        }
+        const other = allPresenceUsers.find(u => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId);
+        if (other) { chStatus.textContent = other.online ? "Online" : "Offline"; chStatus.className = `ch-status ${other.online ? "online-status" : "offline-status"}`; }
       }
-      scrollBottom();
-    },
-  );
+    }
+    scrollBottom();
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1912,25 +1902,15 @@ function listenTyping(roomId) {
 // ═══════════════════════════════════════════════════════════════════════════
 emojiToggleBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  emojiPanel.classList.contains("hidden")
-    ? (openEmojiPanel(), closeAttachMenu(), closeMoreDropdown())
-    : closeEmojiPanel();
+  emojiPanel.classList.contains("hidden") ? (openEmojiPanel(), closeAttachMenu(), closeMoreDropdown()) : closeEmojiPanel();
 });
-document.addEventListener("click", (e) => {
-  if (!emojiPanel?.contains(e.target) && e.target !== emojiToggleBtn)
-    closeEmojiPanel();
-});
-function openEmojiPanel() {
-  emojiPanel.classList.remove("hidden");
-  renderEmojiTab(currentEmojiTab);
-}
-function closeEmojiPanel() {
-  emojiPanel?.classList.add("hidden");
-}
+document.addEventListener("click", (e) => { if (!emojiPanel?.contains(e.target) && e.target !== emojiToggleBtn) closeEmojiPanel(); });
+function openEmojiPanel() { emojiPanel.classList.remove("hidden"); renderEmojiTab(currentEmojiTab); }
+function closeEmojiPanel() { emojiPanel?.classList.add("hidden"); }
 
-document.querySelectorAll(".etab").forEach((btn) => {
+document.querySelectorAll(".etab").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".etab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".etab").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     currentEmojiTab = btn.dataset.tab;
     renderEmojiTab(currentEmojiTab);
@@ -1942,21 +1922,18 @@ function renderEmojiTab(tab) {
   if (tab === "emoji") {
     const grid = document.createElement("div");
     grid.className = "emoji-grid";
-    EMOJIS.forEach((em) => {
+    EMOJIS.forEach(em => {
       const btn = document.createElement("div");
       btn.className = "emoji-btn-item";
       btn.textContent = em;
-      btn.addEventListener("click", () => {
-        msgInput.value += em;
-        msgInput.focus();
-      });
+      btn.addEventListener("click", () => { msgInput.value += em; msgInput.focus(); });
       grid.appendChild(btn);
     });
     emojiContent.appendChild(grid);
   } else if (tab === "sticker") {
     const grid = document.createElement("div");
     grid.className = "sticker-grid";
-    STICKERS.forEach((st) => {
+    STICKERS.forEach(st => {
       const item = document.createElement("div");
       item.className = "sticker-item";
       item.textContent = st;
@@ -1973,14 +1950,12 @@ async function sendSticker(sticker) {
   if (!ME || !activeRoomId) return;
   closeEmojiPanel();
   await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
-    uid: ME.uid,
-    name: ME.name,
-    avatar: ME.avatar,
-    text: sticker,
-    type: "sticker",
-    deleted: false,
-    createdAt: serverTimestamp(),
+    uid: ME.uid, name: ME.name, avatar: ME.avatar,
+    text: sticker, type: "sticker", deleted: false, createdAt: serverTimestamp(),
   });
+  if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) {
+    registerDmRoom(activeRoomId).catch(() => { });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2010,72 +1985,49 @@ searchClearBtn?.addEventListener("click", () => {
 async function runContactSearch(q) {
   searchResultsList.innerHTML = `<li class="search-no-result">Searching…</li>`;
   const results = [];
-  const roomsToSearch = [{ roomId: ROOM_GENERAL, name: "General Chat" }];
-  allPresenceUsers
-    .filter((u) => u.uid !== ME.uid)
-    .forEach((u) => {
-      roomsToSearch.push({ roomId: getRoomId(ME.uid, u.uid), name: u.name });
-    });
-  allGroups.forEach((g) => {
-    roomsToSearch.push({ roomId: `group__${g.id}`, name: g.name });
-  });
+  const roomsToSearch = [{ roomId: ROOM_GENERAL, name: getGeneralChatName() }];
+  allPresenceUsers.filter(u => u.uid !== ME.uid).forEach(u => roomsToSearch.push({ roomId: getRoomId(ME.uid, u.uid), name: u.name }));
+  existingDmRooms.forEach(r => { if (!roomsToSearch.find(x => x.roomId === r.roomId)) roomsToSearch.push({ roomId: r.roomId, name: r.name }); });
+  allGroups.forEach(g => roomsToSearch.push({ roomId: `group__${g.id}`, name: g.name }));
 
   for (const room of roomsToSearch) {
     try {
-      const snap = await getDocs(
-        query(collection(db, "rooms", room.roomId, "messages"), orderBy("createdAt", "desc")),
-      );
-      snap.docs.forEach((d) => {
+      const snap = await getDocs(query(collection(db, "rooms", room.roomId, "messages"), orderBy("createdAt", "desc")));
+      snap.docs.forEach(d => {
         const data = d.data();
+        if (data.uid === "system") return;
         if (data.type === "text" && !data.deleted && data.text.toLowerCase().includes(q)) {
           const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-          results.push({
-            roomId: room.roomId,
-            roomName: room.name,
-            msgId: d.id,
-            text: data.text,
-            senderName: data.name,
-            ts,
-          });
+          results.push({ roomId: room.roomId, roomName: room.name, msgId: d.id, text: data.text, senderName: data.name, ts });
         }
       });
     } catch (_) { }
   }
 
-  if (!results.length) {
-    searchResultsList.innerHTML = `<li class="search-no-result">No messages found for "${escHtml(q)}"</li>`;
-    return;
-  }
+  if (!results.length) { searchResultsList.innerHTML = `<li class="search-no-result">No messages found for "${escHtml(q)}"</li>`; return; }
 
   searchResultsList.innerHTML =
     `<li class="search-result-label">Messages (${results.length})</li>` +
-    results
-      .slice(0, 40)
-      .map((r) => {
-        const highlighted = escHtml(r.text).replace(
-          new RegExp(escHtml(q), "gi"),
-          (m) => `<mark>${m}</mark>`,
-        );
-        const timeStr = r.ts.toLocaleDateString([], { month: "short", day: "numeric" });
-        return `<li class="search-result-msg" data-room="${r.roomId}" data-msg="${r.msgId}">
-          <div class="srm-name">${escHtml(r.roomName)} · ${escHtml(r.senderName)}</div>
-          <div class="srm-text">${highlighted}</div>
-          <div class="srm-time">${timeStr}</div>
-        </li>`;
-      })
-      .join("");
+    results.slice(0, 40).map(r => {
+      const highlighted = escHtml(r.text).replace(new RegExp(escHtml(q), "gi"), m => `<mark>${m}</mark>`);
+      const timeStr = r.ts.toLocaleDateString([], { month: "short", day: "numeric" });
+      return `<li class="search-result-msg" data-room="${r.roomId}" data-msg="${r.msgId}">
+        <div class="srm-name">${escHtml(r.roomName)} · ${escHtml(r.senderName)}</div>
+        <div class="srm-text">${highlighted}</div>
+        <div class="srm-time">${timeStr}</div>
+      </li>`;
+    }).join("");
 
-  const roomsMap = Object.fromEntries(roomsToSearch.map((r) => [r.roomId, r]));
-  searchResultsList.querySelectorAll(".search-result-msg").forEach((el) => {
+  const roomsMap = Object.fromEntries(roomsToSearch.map(r => [r.roomId, r]));
+  searchResultsList.querySelectorAll(".search-result-msg").forEach(el => {
     el.addEventListener("click", () => {
-      const roomId = el.dataset.room;
-      const msgId = el.dataset.msg;
+      const roomId = el.dataset.room, msgId = el.dataset.msg;
       const room = roomsMap[roomId];
       if (!room) return;
-      const targetUser = allPresenceUsers.find((u) => getRoomId(ME.uid, u.uid) === roomId);
+      const targetUser = allPresenceUsers.find(u => getRoomId(ME.uid, u.uid) === roomId);
       const isPublic = roomId === ROOM_GENERAL;
       const isGroup = roomId.startsWith("group__");
-      const grpData = isGroup ? allGroups.find((g) => `group__${g.id}` === roomId) : null;
+      const grpData = isGroup ? allGroups.find(g => `group__${g.id}` === roomId) : null;
       openRoom(roomId, room.name, targetUser?.avatar || null, isPublic, targetUser || null, isGroup, grpData);
       highlightContact(targetUser?.uid || ROOM_GENERAL);
       mobileChatOpen();
@@ -2105,26 +2057,18 @@ chatSearchBtn?.addEventListener("click", () => {
   if (!chatSearchBar.classList.contains("hidden")) chatSearchInput.focus();
   else closeChatSearch();
 });
-
 chatSearchClose?.addEventListener("click", closeChatSearch);
 
 chatSearchInput?.addEventListener("input", () => {
   const q = chatSearchInput.value.trim().toLowerCase();
   clearSearchHighlights();
-  if (!q) {
-    chatSearchCount.textContent = "";
-    searchMatches = [];
-    searchCurrentIdx = -1;
-    return;
-  }
+  if (!q) { chatSearchCount.textContent = ""; searchMatches = []; searchCurrentIdx = -1; return; }
   searchMatches = [];
-  messagesArea.querySelectorAll(".msg-row").forEach((row) => {
+  messagesArea.querySelectorAll(".msg-row").forEach(row => {
     const text = row.querySelector(".bubble")?.textContent?.toLowerCase() || "";
     if (text.includes(q)) searchMatches.push(row);
   });
-  chatSearchCount.textContent = searchMatches.length
-    ? `1/${searchMatches.length}`
-    : "No results";
+  chatSearchCount.textContent = searchMatches.length ? `1/${searchMatches.length}` : "No results";
   searchCurrentIdx = searchMatches.length ? 0 : -1;
   highlightSearchMatches();
   jumpToSearchResult(0);
@@ -2136,7 +2080,6 @@ chatSearchNext?.addEventListener("click", () => {
   jumpToSearchResult(searchCurrentIdx);
   chatSearchCount.textContent = `${searchCurrentIdx + 1}/${searchMatches.length}`;
 });
-
 chatSearchPrev?.addEventListener("click", () => {
   if (!searchMatches.length) return;
   searchCurrentIdx = (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
@@ -2149,91 +2092,59 @@ function closeChatSearch() {
   if (chatSearchInput) chatSearchInput.value = "";
   if (chatSearchCount) chatSearchCount.textContent = "";
   clearSearchHighlights();
-  searchMatches = [];
-  searchCurrentIdx = -1;
+  searchMatches = []; searchCurrentIdx = -1;
 }
-
-function clearSearchHighlights() {
-  messagesArea.querySelectorAll(".search-highlight, .search-current").forEach((el) => {
-    el.classList.remove("search-highlight", "search-current");
-  });
-}
-
-function highlightSearchMatches() {
-  searchMatches.forEach((row) => row.classList.add("search-highlight"));
-}
-
+function clearSearchHighlights() { messagesArea.querySelectorAll(".search-highlight, .search-current").forEach(el => el.classList.remove("search-highlight", "search-current")); }
+function highlightSearchMatches() { searchMatches.forEach(row => row.classList.add("search-highlight")); }
 function jumpToSearchResult(idx) {
-  messagesArea.querySelectorAll(".search-current").forEach((el) => el.classList.remove("search-current"));
-  if (searchMatches[idx]) {
-    searchMatches[idx].classList.add("search-current");
-    searchMatches[idx].scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+  messagesArea.querySelectorAll(".search-current").forEach(el => el.classList.remove("search-current"));
+  if (searchMatches[idx]) { searchMatches[idx].classList.add("search-current"); searchMatches[idx].scrollIntoView({ behavior: "smooth", block: "center" }); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NEW CHAT MODAL
 // ═══════════════════════════════════════════════════════════════════════════
-newChatBtn?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  openNewChatModal();
-});
+newChatBtn?.addEventListener("click", (e) => { e.stopPropagation(); openNewChatModal(); });
 newChatModalClose?.addEventListener("click", () => newChatModal.classList.add("hidden"));
-newChatModal?.addEventListener("click", (e) => {
-  if (e.target === newChatModal) newChatModal.classList.add("hidden");
-});
+newChatModal?.addEventListener("click", (e) => { if (e.target === newChatModal) newChatModal.classList.add("hidden"); });
 
 function openNewChatModal() {
   newChatModal.classList.remove("hidden");
   newChatSearch.value = "";
-  renderNewChatList(allPresenceUsers.filter((u) => u.uid !== ME?.uid));
+  renderNewChatList(allPresenceUsers.filter(u => u.uid !== ME?.uid));
   newChatSearch.focus();
 }
-
 newChatSearch?.addEventListener("input", () => {
   const q = newChatSearch.value.toLowerCase();
-  renderNewChatList(
-    allPresenceUsers.filter(
-      (u) => u.uid !== ME?.uid && u.name.toLowerCase().includes(q),
-    ),
-  );
+  renderNewChatList(allPresenceUsers.filter(u => u.uid !== ME?.uid && u.name.toLowerCase().includes(q)));
 });
 
 function renderNewChatList(users) {
-  if (!users.length) {
-    newChatUserList.innerHTML = `<li class="modal-empty">No users found</li>`;
-    return;
-  }
-  newChatUserList.innerHTML = users
-    .map((u) => {
-      const color = colorFor(u.name);
-      const av = u.avatar
-        ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-        : u.name.charAt(0).toUpperCase();
-      return `
-        <li class="modal-user-item" data-uid="${u.uid}">
-          <div class="modal-user-av" style="background:${color};">${av}
-            <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
-          </div>
-          <div class="modal-user-info">
-            <div class="modal-user-name">${escHtml(u.name)}</div>
-            <div class="modal-user-status">${escHtml(u.status || "")}</div>
-          </div>
-          <span class="modal-user-badge ${u.online ? "online" : "offline"}">${u.online ? "● Online" : "○ Offline"}</span>
-        </li>`;
-    })
-    .join("");
+  if (!users.length) { newChatUserList.innerHTML = `<li class="modal-empty">No users found</li>`; return; }
+  newChatUserList.innerHTML = users.map(u => {
+    const color = colorFor(u.name);
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
+    return `
+      <li class="modal-user-item" data-uid="${u.uid}">
+        <div class="modal-user-av" style="background:${color};">${av}
+          <div class="modal-online-dot ${u.online ? "online" : "offline"}"></div>
+        </div>
+        <div class="modal-user-info">
+          <div class="modal-user-name">${escHtml(u.name)}</div>
+          <div class="modal-user-status">${escHtml(u.status || "")}</div>
+        </div>
+        <span class="modal-user-badge ${u.online ? "online" : "offline"}">${u.online ? "● Online" : "○ Offline"}</span>
+      </li>`;
+  }).join("");
 
-  newChatUserList.querySelectorAll(".modal-user-item").forEach((el) => {
+  newChatUserList.querySelectorAll(".modal-user-item").forEach(el => {
     el.addEventListener("click", () => {
       const uid = el.dataset.uid;
-      const user = allPresenceUsers.find((u) => u.uid === uid);
+      const user = allPresenceUsers.find(u => u.uid === uid);
       if (!user) return;
       const roomId = getRoomId(ME.uid, uid);
-      openRoom(roomId, user.name, user.avatar, false, user, false);
-      highlightContact(uid);
-      mobileChatOpen();
       newChatModal.classList.add("hidden");
+      startDmWithUser(roomId, uid, user);
     });
   });
 }
@@ -2261,20 +2172,8 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
-function scrollBottom() {
-  requestAnimationFrame(() => {
-    if (messagesArea) messagesArea.scrollTop = messagesArea.scrollHeight;
-  });
-}
+function scrollBottom() { requestAnimationFrame(() => { if (messagesArea) messagesArea.scrollTop = messagesArea.scrollHeight; }); }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// COPY ROOM LINK
-// ═══════════════════════════════════════════════════════════════════════════
 window.copyRoomLink = function () {
-  navigator.clipboard
-    .writeText(window.location.href)
-    .then(() => showToast("Room link copied!", "success"));
+  navigator.clipboard.writeText(window.location.href).then(() => showToast("Room link copied!", "success"));
 };
-
-// Start presence heartbeat
-startPresenceHeartbeat();
