@@ -40,9 +40,7 @@
                 <i class="ri-close-line"></i>
             </button>
         </div>
-        <ul class="groups-list" id="groupsList">
-            <!-- Populated by JS -->
-        </ul>
+        <ul class="groups-list" id="groupsList"></ul>
     </div>
     <div class="groups-panel-overlay" id="groupsPanelOverlay"></div>
 
@@ -61,7 +59,7 @@
         <ul class="nav-links">
             <li class="nav-item tooltip-wrap active" data-tip="Dashboard">
                 <a href="#">
-                    <i class="ri-dashboard-line"></i>
+                    <i class="ri-home-5-line"></i>
                     <span class="nav-label">Home</span>
                 </a>
             </li>
@@ -78,13 +76,13 @@
                     <span class="nav-label">Groups</span>
                 </a>
             </li>
-            <li class="nav-item tooltip-wrap" data-tip="Favourites">
+            <li class="nav-item tooltip-wrap" data-tip="Saved">
                 <a href="#">
                     <i class="ri-star-line"></i>
                     <span class="nav-label">Saved</span>
                 </a>
             </li>
-            <li class="nav-item tooltip-wrap" data-tip="Calendar">
+            <li class="nav-item tooltip-wrap" data-tip="Events">
                 <a href="#">
                     <i class="ri-calendar-line"></i>
                     <span class="nav-label">Events</span>
@@ -112,22 +110,9 @@
                 </a>
             </div>
 
-            <div class="sidebar-avatar-wrap tooltip-wrap" data-tip="My Profile" id="avatarWrap">
+            <div class="sidebar-avatar-wrap" id="avatarWrap">
                 <div class="sidebar-avatar" id="sidebarAvatar"></div>
                 <span class="presence-dot"></span>
-                <div class="avatar-user-info">
-                    <div class="avatar-name" id="avatarName"></div>
-                    <div class="avatar-email" id="avatarEmail"></div>
-                </div>
-                <i class="ri-arrow-up-s-line avatar-chevron" id="avatarChevron"></i>
-
-                <div class="profile-dropdown" id="profileDropdown">
-                    <div class="pd-user" id="pdUser"></div>
-                    <hr class="pd-divider">
-                    <button class="pd-item" id="pdProfile"><i class="ri-user-line"></i> My Profile</button>
-                    <button class="pd-item pd-logout" id="pdLogout"><i class="ri-logout-circle-r-line"></i> Log
-                        Out</button>
-                </div>
             </div>
         </div>
     </nav>
@@ -212,6 +197,7 @@
                             <button class="more-item" id="mdPinChat"><i class="ri-pushpin-line"></i> Pin Chat</button>
                             <button class="more-item" id="mdEditNick"><i class="ri-edit-line"></i> Edit
                                 Nickname</button>
+                            <button class="more-item" id="mdRenameChat"><i class="ri-text"></i> Rename Chat</button>
                             <div class="more-divider"></div>
                             <button class="more-item" id="mdClearChat"><i class="ri-brush-line"></i> Clear Chat</button>
                             <button class="more-item more-item-danger" id="mdDeleteChat"><i
@@ -292,43 +278,142 @@
         <button class="info-panel-close-btn" id="infoPanelCloseBtn">
             <i class="ri-close-line"></i>
         </button>
+
+        <!-- Profile Card -->
         <div class="ip-profile-card" id="ipProfileCard">
-            <div class="ip-avatar" id="ipAvatar"></div>
+            <div class="ip-avatar-ring">
+                <div class="ip-avatar" id="ipAvatar"></div>
+                <span class="ip-online-ring" id="ipOnlineRing"></span>
+            </div>
             <div class="ip-name" id="ipName">—</div>
-            <div class="ip-status" id="ipStatus">—</div>
+            <div class="ip-username" id="ipUsername">@—</div>
+            <div class="ip-online-badge" id="ipOnlineBadge">
+                <span class="ip-online-dot"></span>
+                <span id="ipOnlineLabel">Online</span>
+            </div>
+
             <div class="ip-actions">
-                <button class="icon-btn"><i class="ri-phone-line"></i></button>
-                <button class="icon-btn"><i class="ri-vidicon-line"></i></button>
-                <button class="icon-btn"><i class="ri-user-add-line"></i></button>
+                <div class="ip-action-btn">
+                    <button class="icon-btn ip-act"><i class="ri-message-3-line"></i></button>
+                    <span>Message</span>
+                </div>
+                <div class="ip-action-btn">
+                    <button class="icon-btn ip-act"><i class="ri-phone-line"></i></button>
+                    <span>Voice Call</span>
+                </div>
+                <div class="ip-action-btn">
+                    <button class="icon-btn ip-act"><i class="ri-vidicon-line"></i></button>
+                    <span>Video Call</span>
+                </div>
+                <div class="ip-action-btn">
+                    <button class="icon-btn ip-act"><i class="ri-user-add-line"></i></button>
+                    <span>Add User</span>
+                </div>
             </div>
         </div>
-        <div class="ip-section hidden" id="ipGroupMembersSection">
-            <div class="ip-section-label">Group Members</div>
-            <ul class="ip-online-list" id="ipGroupMembersList"></ul>
-        </div>
+
+        <!-- About Section -->
         <div class="ip-section">
-            <div class="ip-section-label">Online Now</div>
-            <ul class="ip-online-list" id="ipOnlineList">
-                <li class="ip-no-users">No users online</li>
-            </ul>
-        </div>
-        <div class="ip-section">
-            <div class="ip-section-label">Shared Media</div>
-            <div class="media-grid" id="mediaGrid">
-                <div class="media-placeholder"><i class="ri-image-line"></i></div>
-                <div class="media-placeholder"><i class="ri-file-pdf-line"></i></div>
-                <div class="media-placeholder"><i class="ri-image-line"></i></div>
-                <div class="media-placeholder"><i class="ri-vidicon-line"></i></div>
-            </div>
-        </div>
-        <div class="ip-section">
-            <div class="ip-section-label">Share Room</div>
-            <div class="share-box">
-                <span id="shareUrl"></span>
-                <button class="copy-btn" onclick="copyRoomLink()">
-                    <i class="ri-links-line"></i>
+            <div class="ip-section-header">
+                <div class="ip-section-label"><i class="ri-information-line"></i> About</div>
+                <button class="icon-btn ip-section-edit" id="ipAboutEditBtn" title="Edit about">
+                    <i class="ri-edit-line"></i>
                 </button>
             </div>
+            <div class="ip-about" id="ipAbout">Hey there! I'm using NexTalk</div>
+
+            <div class="ip-info-row">
+                <span class="label"><i class="ri-mail-line"></i> Email</span>
+                <span class="value" id="ipEmail">—</span>
+            </div>
+            <div class="ip-info-row">
+                <span class="label"><i class="ri-phone-line"></i> Phone</span>
+                <span class="value" id="ipPhone">—</span>
+            </div>
+            <div class="ip-info-row">
+                <span class="label"><i class="ri-calendar-check-line"></i> Joined</span>
+                <span class="value" id="ipJoined">—</span>
+            </div>
+        </div>
+
+        <!-- Profile Details — own profile only -->
+        <div class="ip-section hidden" id="ipExtraSection">
+            <div class="ip-section-label"><i class="ri-user-3-line"></i> Profile Details</div>
+            <div class="ip-info-row">
+                <span class="label"><i class="ri-cake-line"></i> Date of Birth</span>
+                <span class="value" id="ipDob">—</span>
+            </div>
+            <div class="ip-info-row">
+                <span class="label"><i class="ri-user-3-line"></i> Gender</span>
+                <span class="value" id="ipGender">—</span>
+            </div>
+            <div class="ip-info-row">
+                <span class="label"><i class="ri-map-pin-line"></i> Location</span>
+                <span class="value" id="ipLocation">—</span>
+            </div>
+            <div class="ip-info-row" style="flex-direction:column;gap:8px;align-items:flex-start;">
+                <span class="label"><i class="ri-heart-line"></i> Interests</span>
+                <span class="value" id="ipInterests">—</span>
+            </div>
+        </div>
+
+        <!-- Group members section -->
+        <div class="ip-section hidden" id="ipGroupMembersSection">
+            <div class="ip-section-label"><i class="ri-group-line"></i> Members</div>
+            <ul class="ip-online-list" id="ipGroupMembersList"></ul>
+        </div>
+
+        <!-- Shared Media -->
+        <div class="ip-section" id="ipSharedMediaSection">
+            <div class="ip-section-header">
+                <div class="ip-section-label"><i class="ri-image-line"></i> Shared Media</div>
+                <button class="ip-view-all-btn" id="ipViewAllMedia">View all</button>
+            </div>
+            <div class="ip-media-count" id="ipMediaCount"></div>
+            <div class="ip-media-grid" id="ipMediaGrid">
+                <div class="ip-media-empty"><i class="ri-image-line"></i><span>No media shared yet</span></div>
+            </div>
+        </div>
+
+        <!-- Settings -->
+        <div class="ip-section">
+            <div class="ip-section-label"><i class="ri-settings-3-line"></i> Settings</div>
+            <div class="ip-settings-list">
+                <div class="ip-setting-item">
+                    <div class="ip-setting-left">
+                        <div class="ip-setting-icon"><i class="ri-user-settings-line"></i></div>
+                        <span>Account Settings</span>
+                    </div>
+                    <i class="ri-arrow-right-s-line ip-setting-arrow"></i>
+                </div>
+                <div class="ip-setting-item">
+                    <div class="ip-setting-left">
+                        <div class="ip-setting-icon"><i class="ri-shield-line"></i></div>
+                        <span>Privacy Settings</span>
+                    </div>
+                    <i class="ri-arrow-right-s-line ip-setting-arrow"></i>
+                </div>
+                <div class="ip-setting-item">
+                    <div class="ip-setting-left">
+                        <div class="ip-setting-icon"><i class="ri-notification-line"></i></div>
+                        <span>Notification Settings</span>
+                    </div>
+                    <i class="ri-arrow-right-s-line ip-setting-arrow"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Block User -->
+        <div class="ip-section ip-section-danger-wrap" id="ipDangerSection">
+            <button class="ip-block-btn" id="ipBlockUserBtn">
+                <i class="ri-forbid-line"></i> Block User
+            </button>
+        </div>
+
+        <div style="padding: 16px 16px 24px;">
+            <button class="btn-danger w-full" id="pdLogout">
+                <i class="ri-logout-circle-r-line"></i> Log Out
+            </button>
         </div>
     </aside>
 
@@ -480,7 +565,7 @@
     <div class="modal-overlay hidden" id="editNickModal">
         <div class="modal-box modal-sm">
             <div class="modal-header">
-                <h3><i class="ri-edit-line"></i> Edit Nickname</h3>
+                <h3><i class="ri-edit-line"></i> <span id="editNickModalTitle">Edit Nickname</span></h3>
                 <button class="icon-btn" id="editNickClose"><i class="ri-close-line"></i></button>
             </div>
             <div style="padding:12px 18px;">
@@ -511,7 +596,8 @@
 
     <div id="toastContainer"></div>
 
-    <!-- script file -->
+
+    <!-- script file link -->
     <script type="module" src="../javascript/chatdashboard.js"></script>
 </body>
 
