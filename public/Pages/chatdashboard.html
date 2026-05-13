@@ -166,6 +166,7 @@
                         <i class="ri-arrow-left-line"></i>
                     </button>
                     <div class="ch-avatar-wrap">
+                        <!-- Avatar is now clickable to open View Profile (set via JS) -->
                         <div class="ch-avatar" id="chAvatar"></div>
                         <span class="ch-presence" id="chPresence"></span>
                     </div>
@@ -190,6 +191,11 @@
                             <i class="ri-more-2-fill"></i>
                         </button>
                         <div class="more-dropdown hidden" id="moreDropdown">
+                            <!-- VIEW PROFILE — only shown for DM chats (hidden for General/Groups via JS) -->
+                            <button class="more-item more-item-profile" id="mdViewProfile">
+                                <i class="ri-user-3-line"></i> View Profile
+                            </button>
+                            <div class="more-divider"></div>
                             <button class="more-item" id="mdSearch"><i class="ri-search-line"></i> Search</button>
                             <div class="more-divider"></div>
                             <button class="more-item" id="mdSelectMsg"><i class="ri-chat-check-line"></i> Select
@@ -259,10 +265,35 @@
                     </div>
                 </div>
 
+                <!-- input  -->
                 <div class="input-wrap">
                     <input type="text" id="msgInput" placeholder="Type a message…" autocomplete="off" />
+
+                    <!-- Waveform (recording ke waqt dikhta hai) -->
+                    <div class="waveform-wrap" id="waveform">
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                    </div>
+
+                    <!-- Timer -->
+                    <span class="rec-timer" id="recTimer">
+                        <span class="rec-dot"></span>
+                        <span id="recTime">0:00</span>
+                    </span>
+
                     <button class="emoji-btn" id="emojiToggleBtn" title="Emoji & Stickers">
                         <i class="ri-emotion-happy-line"></i>
+                    </button>
+
+                    <!-- MIC BUTTON -->
+                    <button class="mic-btn" id="micBtn" title="Voice message" aria-label="Record voice message">
+                        <i class="ri-mic-line" id="micIcon"></i>
                     </button>
                 </div>
 
@@ -273,7 +304,7 @@
         </div>
     </main>
 
-    <!-- RIGHT INFO PANEL -->
+    <!-- RIGHT INFO PANEL (Own profile) -->
     <aside class="info-panel" id="infoPanel">
         <button class="info-panel-close-btn" id="infoPanelCloseBtn">
             <i class="ri-close-line"></i>
@@ -418,6 +449,187 @@
     </aside>
 
     <div class="info-panel-overlay" id="infoPanelOverlay"></div>
+
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         VIEW PROFILE PANEL — Slides in from the right over the chat area
+         ═══════════════════════════════════════════════════════════════════ -->
+    <aside class="view-profile-panel" id="viewProfilePanel" role="dialog" aria-modal="true" aria-label="User Profile">
+
+        <!-- Close button -->
+        <button class="vp-close-btn" id="vpCloseBtn" title="Close Profile" aria-label="Close">
+            <i class="ri-close-line"></i>
+        </button>
+
+        <!-- ─── SKELETON LOADER ─────────────────────────────────────────── -->
+        <div class="vp-skeleton" id="vpSkeleton">
+            <!-- hero skeleton -->
+            <div class="vp-skeleton-hero">
+                <div class="vp-skeleton-avatar"></div>
+                <div class="vp-skeleton-block" style="width:120px;height:18px;margin:14px auto 6px;"></div>
+                <div class="vp-skeleton-block" style="width:80px;height:13px;margin:0 auto 10px;"></div>
+                <div class="vp-skeleton-block" style="width:70px;height:24px;margin:0 auto;border-radius:20px;"></div>
+            </div>
+            <!-- action buttons skeleton -->
+            <div class="vp-skeleton-actions">
+                <div class="vp-skeleton-circle"></div>
+                <div class="vp-skeleton-circle"></div>
+                <div class="vp-skeleton-circle"></div>
+                <div class="vp-skeleton-circle"></div>
+            </div>
+            <!-- rows skeleton -->
+            <div class="vp-skeleton-rows">
+                <div class="vp-skeleton-row"></div>
+                <div class="vp-skeleton-row" style="width:75%;"></div>
+                <div class="vp-skeleton-row" style="width:60%;"></div>
+                <div class="vp-skeleton-row" style="width:85%;"></div>
+                <div class="vp-skeleton-row" style="width:55%;"></div>
+            </div>
+        </div>
+
+        <!-- ─── ACTUAL CONTENT (hidden until loaded) ────────────────────── -->
+        <div class="vp-content hidden" id="vpContent">
+
+            <!-- Hero card -->
+            <div class="vp-hero">
+                <div class="vp-avatar-ring">
+                    <div class="vp-avatar" id="vpAvatar"></div>
+                </div>
+                <h2 class="vp-name" id="vpName">—</h2>
+                <p class="vp-username" id="vpUsername">@—</p>
+                <div class="vp-online-badge online" id="vpOnlineBadge">
+                    <span class="vp-online-dot"></span>
+                    <span id="vpOnlineLabel">Online</span>
+                </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="vp-actions">
+                <button class="vp-act-btn" id="vpMsgBtn" title="Send Message">
+                    <div class="vp-act-icon"><i class="ri-message-3-line"></i></div>
+                    <span>Message</span>
+                </button>
+                <button class="vp-act-btn" title="Voice Call"
+                    onclick="window._vpShowToast && window._vpShowToast('Voice Call coming soon!', 'warning')">
+                    <div class="vp-act-icon"><i class="ri-phone-line"></i></div>
+                    <span>Voice</span>
+                </button>
+                <button class="vp-act-btn" title="Video Call"
+                    onclick="window._vpShowToast && window._vpShowToast('Video Call coming soon!', 'warning')">
+                    <div class="vp-act-icon"><i class="ri-vidicon-line"></i></div>
+                    <span>Video</span>
+                </button>
+                <button class="vp-act-btn" title="Add to Contacts"
+                    onclick="window._vpShowToast && window._vpShowToast('Add contact coming soon!', 'warning')">
+                    <div class="vp-act-icon"><i class="ri-user-add-line"></i></div>
+                    <span>Add</span>
+                </button>
+            </div>
+
+            <!-- About / Bio -->
+            <div class="vp-section">
+                <div class="vp-section-label"><i class="ri-information-line"></i> About</div>
+                <div class="vp-about" id="vpAbout">Hey there! I'm using NexTalk</div>
+            </div>
+
+            <!-- Contact Info -->
+            <div class="vp-section">
+                <div class="vp-section-label"><i class="ri-contacts-line"></i> Contact Info</div>
+
+                <div class="vp-info-row">
+                    <div class="vp-info-icon"><i class="ri-mail-line"></i></div>
+                    <div class="vp-info-body">
+                        <span class="vp-info-label">Email</span>
+                        <span class="vp-info-value" id="vpEmail">—</span>
+                    </div>
+                </div>
+
+                <div class="vp-info-row">
+                    <div class="vp-info-icon"><i class="ri-phone-line"></i></div>
+                    <div class="vp-info-body">
+                        <span class="vp-info-label">Phone</span>
+                        <span class="vp-info-value" id="vpPhone">—</span>
+                    </div>
+                </div>
+
+                <div class="vp-info-row">
+                    <div class="vp-info-icon"><i class="ri-calendar-check-line"></i></div>
+                    <div class="vp-info-body">
+                        <span class="vp-info-label">Joined</span>
+                        <span class="vp-info-value" id="vpJoined">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Details -->
+            <div class="vp-section">
+                <div class="vp-section-label"><i class="ri-user-3-line"></i> Profile Details</div>
+
+                <div class="vp-info-row">
+                    <div class="vp-info-icon"><i class="ri-cake-line"></i></div>
+                    <div class="vp-info-body">
+                        <span class="vp-info-label">Date of Birth</span>
+                        <span class="vp-info-value" id="vpDob">—</span>
+                    </div>
+                </div>
+
+                <div class="vp-info-row">
+                    <div class="vp-info-icon"><i class="ri-user-3-line"></i></div>
+                    <div class="vp-info-body">
+                        <span class="vp-info-label">Gender</span>
+                        <span class="vp-info-value" id="vpGender">—</span>
+                    </div>
+                </div>
+
+                <div class="vp-info-row">
+                    <div class="vp-info-icon"><i class="ri-map-pin-line"></i></div>
+                    <div class="vp-info-body">
+                        <span class="vp-info-label">Location</span>
+                        <span class="vp-info-value" id="vpLocation">—</span>
+                    </div>
+                </div>
+
+                <div class="vp-info-row" style="align-items:flex-start;">
+                    <div class="vp-info-icon" style="margin-top:2px;"><i class="ri-heart-line"></i></div>
+                    <div class="vp-info-body">
+                        <span class="vp-info-label">Interests</span>
+                        <div class="vp-info-value" id="vpInterests">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shared Media -->
+            <div class="vp-section">
+                <div class="vp-section-header">
+                    <div class="vp-section-label"><i class="ri-image-line"></i> Shared Media</div>
+                    <span class="vp-media-count-badge" id="vpMediaCount"></span>
+                </div>
+                <div class="vp-media-grid" id="vpMediaGrid">
+                    <div class="vp-media-empty">
+                        <i class="ri-image-line"></i>
+                        <span>No media shared yet</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom actions -->
+            <div class="vp-bottom-actions">
+                <button class="vp-danger-btn"
+                    onclick="window._vpShowToast && window._vpShowToast('Block feature coming soon!', 'warning')">
+                    <i class="ri-forbid-line"></i> Block User
+                </button>
+                <button class="vp-danger-btn"
+                    onclick="window._vpShowToast && window._vpShowToast('Report feature coming soon!', 'warning')">
+                    <i class="ri-flag-line"></i> Report
+                </button>
+            </div>
+
+        </div><!-- /vp-content -->
+    </aside>
+
+    <!-- View Profile overlay (click to close) -->
+    <div class="view-profile-overlay" id="viewProfileOverlay"></div>
+
 
     <!-- NEW CHAT MODAL -->
     <div class="modal-overlay hidden" id="newChatModal">
@@ -596,8 +808,6 @@
 
     <div id="toastContainer"></div>
 
-
-    <!-- script file link -->
     <script type="module" src="../javascript/chatdashboard.js"></script>
 </body>
 
