@@ -9,7 +9,8 @@ import {
     GoogleAuthProvider,
     OAuthProvider,
     signInWithPopup,
-    updateProfile
+    updateProfile,
+    onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 // ===== FIREBASE INIT =====
@@ -26,7 +27,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-// ===== PERSISTENCE FIX — logout tak login yaad rahega =====
 setPersistence(auth, browserLocalPersistence).catch((err) => {
     console.error("Persistence error:", err);
 });
@@ -35,24 +35,50 @@ const googleProvider = new GoogleAuthProvider();
 const appleProvider = new OAuthProvider("apple.com");
 
 // ===== ELEMENTS =====
-const tabs = document.querySelectorAll(".tab");
-const signupForm = document.getElementById("signupForm");
-const loginForm = document.getElementById("loginForm");
-const resetForm = document.getElementById("resetForm");
-const authImage = document.getElementById("authImage");
-const forgotBtn = document.getElementById("forgotBtn");
-const backToLogin = document.getElementById("backToLogin");
+const signupView = document.getElementById("signupView");
+const loginView = document.getElementById("loginView");
+const resetView = document.getElementById("resetView");
+const toastContainer = document.getElementById("toastContainer");
+
+// Buttons
 const signupBtn = document.getElementById("signupBtn");
 const loginBtn = document.getElementById("loginBtn");
 const resetBtn = document.getElementById("resetBtn");
+
+const forgotBtn = document.getElementById("forgotBtn");
+const backToLogin = document.getElementById("backToLogin");
+
+// Google / Apple — two sets (signup view + login view)
 const googleBtn = document.getElementById("googleBtn");
 const appleBtn = document.getElementById("appleBtn");
-const toastContainer = document.getElementById("toastContainer");
+const googleBtn2 = document.getElementById("googleBtn2");
+const appleBtn2 = document.getElementById("appleBtn2");
+
+// Switch links
+const switchToLoginFromSignup = document.getElementById("switchToLoginFromSignup");
+const switchToSignup = document.getElementById("switchToSignup");
+
+// ===== VIEW HELPERS =====
+function showView(view) {
+    [signupView, loginView, resetView].forEach(v => v.classList.add("hidden"));
+    view.classList.remove("hidden");
+}
+
+// ===== TAB SWITCHING (each view has its own tab bar) =====
+document.addEventListener("click", (e) => {
+    const tab = e.target.closest(".tab");
+    if (!tab) return;
+
+    const type = tab.getAttribute("data-tab");
+    if (type === "signup") showView(signupView);
+    else if (type === "login") showView(loginView);
+});
+
+// Switch links
+switchToLoginFromSignup?.addEventListener("click", (e) => { e.preventDefault(); showView(loginView); });
+switchToSignup?.addEventListener("click", (e) => { e.preventDefault(); showView(signupView); });
 
 // ===== ALREADY LOGGED IN CHECK =====
-// Agar user already logged in hai toh seedha dashboard pe bhejo
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
 onAuthStateChanged(auth, (user) => {
     if (user) {
         const profile = loadMyProfile(user.uid);
@@ -76,12 +102,10 @@ function showToast(message, type = "success") {
         error: "ri-error-warning-line",
         warning: "ri-alert-line"
     };
-
     const toast = document.createElement("div");
     toast.className = `toast ${type}`;
     toast.innerHTML = `<i class="${icons[type]}"></i><span>${message}</span>`;
     toastContainer.appendChild(toast);
-
     setTimeout(() => {
         toast.classList.add("hide");
         toast.addEventListener("animationend", () => toast.remove());
@@ -93,12 +117,10 @@ function setError(inputEl, errEl, message) {
     inputEl.classList.add("invalid");
     errEl.textContent = message;
 }
-
 function clearError(inputEl, errEl) {
     inputEl.classList.remove("invalid");
     errEl.textContent = "";
 }
-
 function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -108,63 +130,34 @@ function redirectToRoom() {
     window.location.href = "./profilesetup.html";
 }
 
-// ===== TAB SWITCHING =====
-tabs.forEach(tab => {
-    tab.addEventListener("click", () => {
-        tabs.forEach(t => t.classList.remove("active"));
-        tab.classList.add("active");
-
-        const type = tab.getAttribute("data-tab");
-
-        if (type === "signup") {
-            signupForm.classList.remove("hidden");
-            loginForm.classList.add("hidden");
-            resetForm.classList.add("hidden");
-            authImage.src = "../Assets/Auth/register.png";
-        } else {
-            signupForm.classList.add("hidden");
-            loginForm.classList.remove("hidden");
-            resetForm.classList.add("hidden");
-            authImage.src = "../Assets/Auth/login.png";
-        }
-    });
+// ===== FORGOT PASSWORD =====
+forgotBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    showView(resetView);
 });
 
-// ===== FORGOT PASSWORD TOGGLE =====
-forgotBtn.addEventListener("click", (e) => {
+backToLogin?.addEventListener("click", (e) => {
     e.preventDefault();
-    loginForm.classList.add("hidden");
-    resetForm.classList.remove("hidden");
-    tabs.forEach(t => t.classList.remove("active"));
-});
-
-backToLogin.addEventListener("click", (e) => {
-    e.preventDefault();
-    resetForm.classList.add("hidden");
-    loginForm.classList.remove("hidden");
-    tabs.forEach(t => {
-        t.classList.toggle("active", t.getAttribute("data-tab") === "login");
-    });
+    showView(loginView);
 });
 
 // ===== PASSWORD TOGGLE =====
-document.querySelectorAll(".toggle").forEach(toggle => {
-    toggle.addEventListener("click", () => {
-        const input = toggle.closest(".input-box").querySelector("input");
-        const icon = toggle.querySelector("i");
-
-        if (input.type === "password") {
-            input.type = "text";
-            icon.classList.replace("ri-eye-line", "ri-eye-off-line");
-        } else {
-            input.type = "password";
-            icon.classList.replace("ri-eye-off-line", "ri-eye-line");
-        }
-    });
+document.addEventListener("click", (e) => {
+    const toggle = e.target.closest(".toggle");
+    if (!toggle) return;
+    const input = toggle.closest(".input-box").querySelector("input");
+    const icon = toggle.querySelector("i");
+    if (input.type === "password") {
+        input.type = "text";
+        icon.classList.replace("ri-eye-line", "ri-eye-off-line");
+    } else {
+        input.type = "password";
+        icon.classList.replace("ri-eye-off-line", "ri-eye-line");
+    }
 });
 
 // ===== SIGNUP =====
-signupBtn.addEventListener("click", async () => {
+signupBtn?.addEventListener("click", async () => {
     const name = document.getElementById("signupName");
     const email = document.getElementById("signupEmail");
     const password = document.getElementById("signupPassword");
@@ -176,40 +169,18 @@ signupBtn.addEventListener("click", async () => {
     const confirmErr = document.getElementById("signupConfirmErr");
 
     let valid = true;
-
     clearError(name, nameErr);
     clearError(email, emailErr);
     clearError(password, passwordErr);
     clearError(confirm, confirmErr);
 
-    if (!name.value.trim()) {
-        setError(name, nameErr, "Full name is required.");
-        valid = false;
-    }
-
-    if (!email.value.trim()) {
-        setError(email, emailErr, "Email is required.");
-        valid = false;
-    } else if (!isValidEmail(email.value.trim())) {
-        setError(email, emailErr, "Enter a valid email address.");
-        valid = false;
-    }
-
-    if (!password.value) {
-        setError(password, passwordErr, "Password is required.");
-        valid = false;
-    } else if (password.value.length < 6) {
-        setError(password, passwordErr, "Password must be at least 6 characters.");
-        valid = false;
-    }
-
-    if (!confirm.value) {
-        setError(confirm, confirmErr, "Please repeat your password.");
-        valid = false;
-    } else if (confirm.value !== password.value) {
-        setError(confirm, confirmErr, "Passwords do not match.");
-        valid = false;
-    }
+    if (!name.value.trim()) { setError(name, nameErr, "Full name is required."); valid = false; }
+    if (!email.value.trim()) { setError(email, emailErr, "Email is required."); valid = false; }
+    else if (!isValidEmail(email.value.trim())) { setError(email, emailErr, "Enter a valid email address."); valid = false; }
+    if (!password.value) { setError(password, passwordErr, "Password is required."); valid = false; }
+    else if (password.value.length < 6) { setError(password, passwordErr, "Password must be at least 6 characters."); valid = false; }
+    if (!confirm.value) { setError(confirm, confirmErr, "Please repeat your password."); valid = false; }
+    else if (confirm.value !== password.value) { setError(confirm, confirmErr, "Passwords do not match."); valid = false; }
 
     if (!valid) return;
 
@@ -223,70 +194,50 @@ signupBtn.addEventListener("click", async () => {
         setTimeout(redirectToRoom, 1200);
     } catch (err) {
         signupBtn.disabled = false;
-        signupBtn.textContent = "Create Account";
+        signupBtn.textContent = "Sign Up";
         showToast(getFirebaseError(err.code), "error");
     }
 });
 
 // ===== LOGIN =====
-loginBtn.addEventListener("click", async () => {
+loginBtn?.addEventListener("click", async () => {
     const email = document.getElementById("loginEmail");
     const password = document.getElementById("loginPassword");
     const emailErr = document.getElementById("loginEmailErr");
     const passwordErr = document.getElementById("loginPasswordErr");
 
     let valid = true;
-
     clearError(email, emailErr);
     clearError(password, passwordErr);
 
-    if (!email.value.trim()) {
-        setError(email, emailErr, "Email is required.");
-        valid = false;
-    } else if (!isValidEmail(email.value.trim())) {
-        setError(email, emailErr, "Enter a valid email address.");
-        valid = false;
-    }
-
-    if (!password.value) {
-        setError(password, passwordErr, "Password is required.");
-        valid = false;
-    }
+    if (!email.value.trim()) { setError(email, emailErr, "Email is required."); valid = false; }
+    else if (!isValidEmail(email.value.trim())) { setError(email, emailErr, "Enter a valid email address."); valid = false; }
+    if (!password.value) { setError(password, passwordErr, "Password is required."); valid = false; }
 
     if (!valid) return;
 
     loginBtn.disabled = true;
-    loginBtn.textContent = "Logging in...";
+    loginBtn.textContent = "Signing in...";
 
     try {
         await signInWithEmailAndPassword(auth, email.value.trim(), password.value);
         showToast("Welcome back! Redirecting...", "success");
-        setTimeout(() => {
-            window.location.href = "./chatdashboard.html";
-        }, 1200);
+        setTimeout(() => { window.location.href = "./chatdashboard.html"; }, 1200);
     } catch (err) {
         loginBtn.disabled = false;
-        loginBtn.textContent = "Login";
+        loginBtn.textContent = "Sign In";
         showToast(getFirebaseError(err.code), "error");
     }
 });
 
 // ===== RESET PASSWORD =====
-resetBtn.addEventListener("click", async () => {
+resetBtn?.addEventListener("click", async () => {
     const email = document.getElementById("resetEmail");
     const emailErr = document.getElementById("resetEmailErr");
 
     clearError(email, emailErr);
-
-    if (!email.value.trim()) {
-        setError(email, emailErr, "Email is required.");
-        return;
-    }
-
-    if (!isValidEmail(email.value.trim())) {
-        setError(email, emailErr, "Enter a valid email address.");
-        return;
-    }
+    if (!email.value.trim()) { setError(email, emailErr, "Email is required."); return; }
+    if (!isValidEmail(email.value.trim())) { setError(email, emailErr, "Enter a valid email address."); return; }
 
     resetBtn.disabled = true;
     resetBtn.textContent = "Sending...";
@@ -299,39 +250,35 @@ resetBtn.addEventListener("click", async () => {
         showToast(getFirebaseError(err.code), "error");
     } finally {
         resetBtn.disabled = false;
-        resetBtn.textContent = "Reset Password";
+        resetBtn.textContent = "Send Reset Link";
     }
 });
 
 // ===== GOOGLE LOGIN =====
-googleBtn.addEventListener("click", async () => {
+async function handleGoogle() {
     try {
         await signInWithPopup(auth, googleProvider);
         showToast("Signed in with Google!", "success");
-        setTimeout(() => {
-            window.location.href = "./chatdashboard.html";
-        }, 1200);
+        setTimeout(() => { window.location.href = "./chatdashboard.html"; }, 1200);
     } catch (err) {
-        if (err.code !== "auth/popup-closed-by-user") {
-            showToast(getFirebaseError(err.code), "error");
-        }
+        if (err.code !== "auth/popup-closed-by-user") showToast(getFirebaseError(err.code), "error");
     }
-});
+}
+googleBtn?.addEventListener("click", handleGoogle);
+googleBtn2?.addEventListener("click", handleGoogle);
 
 // ===== APPLE LOGIN =====
-appleBtn.addEventListener("click", async () => {
+async function handleApple() {
     try {
         await signInWithPopup(auth, appleProvider);
         showToast("Signed in with Apple!", "success");
-        setTimeout(() => {
-            window.location.href = "./chatdashboard.html";
-        }, 1200);
+        setTimeout(() => { window.location.href = "./chatdashboard.html"; }, 1200);
     } catch (err) {
-        if (err.code !== "auth/popup-closed-by-user") {
-            showToast(getFirebaseError(err.code), "error");
-        }
+        if (err.code !== "auth/popup-closed-by-user") showToast(getFirebaseError(err.code), "error");
     }
-});
+}
+appleBtn?.addEventListener("click", handleApple);
+appleBtn2?.addEventListener("click", handleApple);
 
 // ===== FIREBASE ERROR MESSAGES =====
 function getFirebaseError(code) {
