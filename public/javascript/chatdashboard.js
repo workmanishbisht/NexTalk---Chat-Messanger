@@ -1,9 +1,4 @@
-// chatdashboard.js — FIXED: Complete duplicate user/profile prevention across all devices/sessions
-// UPDATED: Added dynamic "View Profile" feature with real-time Firebase data fetching
-// FIX v2: Profile data now stored in Firestore `users/{uid}` so every user's full profile loads correctly
-// v3: Voice/Mic recording feature added with waveform animation, timer, swipe-to-cancel
-// FIX v4: Real-time presence (online/offline) fixed — heartbeat-based, no false offline on tab switch
-// FIX v4: Bio/Status now fully editable and syncs to Firestore + presence in real time
+// chatdashboard.js — 
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
