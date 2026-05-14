@@ -5,29 +5,74 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NexTalk - Login</title>
-    <!-- Favicon -->
     <link rel="icon" type="image/png" href="../Assets/FavIcon/favicon.png">
-    <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/authentication.css">
 </head>
 
 <body>
 
-    <div id="toastContainer"></div>
+<div id="toastContainer"></div>
 
-    <section class="auth">
-        <div class="auth-container">
+<div class="auth">
 
-            <div class="auth-left">
-                <div class="auth-logo">
-                    <a href="#">
-                        <img src="../Assets/Logo/nextalk.png" alt="NexTalk">
-                    </a>
+    <!-- ===== LEFT BRANDING PANEL ===== -->
+    <div class="auth-left-panel">
+        <div class="panel-logo">
+            <img src="../Assets/Logo/nextalk.png" alt="NexTalk">
+            <span class="panel-logo-text"></span>
+        </div>
+
+        <div class="panel-content">
+            <h1 class="panel-headline">Speak More.<br>Connect Better.</h1>
+            <p class="panel-desc">NexTalk brings conversations together — simple, secure, and smart.</p>
+
+            <div class="panel-features">
+                <div class="panel-feature">
+                    <div class="feature-icon"><i class="ri-message-3-line"></i></div>
+                    <div class="feature-text">
+                        <h4>Real-time Messaging</h4>
+                        <p>Instant messaging, perfectly synced across all your devices.</p>
+                    </div>
                 </div>
+                <div class="panel-feature">
+                    <div class="feature-icon"><i class="ri-shield-keyhole-line"></i></div>
+                    <div class="feature-text">
+                        <h4>Secure &amp; Private</h4>
+                        <p>Enterprise-grade security to keep your conversations safe.</p>
+                    </div>
+                </div>
+                <div class="panel-feature">
+                    <div class="feature-icon"><i class="ri-group-line"></i></div>
+                    <div class="feature-text">
+                        <h4>Team Collaboration</h4>
+                        <p>Work together seamlessly with groups, channels &amp; more.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-                <h2 class="auth-title">Welcome to NexTalk</h2>
-                <p class="auth-sub">Access your account or create a new one.</p>
+        <div class="panel-illustration">
+            <img src="../Assets/Auth/ui.png" alt="NexTalk app preview">
+        </div>
+    </div>
+
+    <!-- ===== RIGHT FORM PANEL ===== -->
+    <div class="auth-right-panel">
+        <div class="form-inner">
+
+            <!-- Logo (tablet/mobile only) -->
+            <div class="form-logo">
+                <img src="../Assets/Logo/nextalk.png" alt="NexTalk">
+                <span class="form-logo-text"></span>
+            </div>
+
+            <!-- ========== SIGNUP VIEW ========== -->
+            <div id="signupView">
+                <div class="form-header">
+                    <h2>Create your account</h2>
+                    <p>Join NexTalk and start connecting.</p>
+                </div>
 
                 <div class="auth-tabs">
                     <button class="tab active" data-tab="signup">Sign up</button>
@@ -37,42 +82,89 @@
                 <form id="signupForm">
                     <div class="form-group">
                         <label>Full name</label>
-                        <input id="signupName" type="text" placeholder="Enter your name">
+                        <div class="input-box">
+                            <span class="input-icon"><i class="ri-user-3-line"></i></span>
+                            <input id="signupName" type="text" placeholder="Enter your full name">
+                        </div>
                         <span class="field-error" id="signupNameErr"></span>
                     </div>
                     <div class="form-group">
-                        <label>Email</label>
-                        <input id="signupEmail" type="email" placeholder="Enter your email">
+                        <label>Email address</label>
+                        <div class="input-box">
+                            <span class="input-icon"><i class="ri-mail-line"></i></span>
+                            <input id="signupEmail" type="email" placeholder="Enter your email">
+                        </div>
                         <span class="field-error" id="signupEmailErr"></span>
                     </div>
                     <div class="form-group">
                         <label>Password</label>
                         <div class="input-box">
+                            <span class="input-icon"><i class="ri-lock-line"></i></span>
                             <input id="signupPassword" type="password" placeholder="Create a password">
                             <span class="toggle"><i class="ri-eye-line"></i></span>
                         </div>
+                        <span class="password-hint">Use 8+ characters with a mix of letters, numbers &amp; symbols</span>
                         <span class="field-error" id="signupPasswordErr"></span>
                     </div>
                     <div class="form-group">
-                        <label>Repeat password</label>
+                        <label>Confirm password</label>
                         <div class="input-box">
-                            <input id="signupConfirm" type="password" placeholder="Repeat your password">
+                            <span class="input-icon"><i class="ri-lock-password-line"></i></span>
+                            <input id="signupConfirm" type="password" placeholder="Confirm your password">
                             <span class="toggle"><i class="ri-eye-line"></i></span>
                         </div>
                         <span class="field-error" id="signupConfirmErr"></span>
                     </div>
-                    <button type="button" class="btn" id="signupBtn">Create Account</button>
+
+                    <div class="terms-row">
+                        <input type="checkbox" id="termsCheck">
+                        <label for="termsCheck">I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></label>
+                    </div>
+
+                    <button type="button" class="btn" id="signupBtn">Sign Up</button>
                 </form>
 
-                <form id="loginForm" class="hidden">
+                <div class="divider"><span>or continue with</span></div>
+
+                <div class="social">
+                    <button type="button" id="googleBtn">
+                        <i class="ri-google-fill"></i>
+                        <span>Continue with Google</span>
+                    </button>
+                    <button type="button" id="appleBtn">
+                        <i class="ri-apple-fill"></i>
+                        <span>Continue with Apple</span>
+                    </button>
+                </div>
+
+                <p class="switch-link">Already have an account? <a href="#" id="switchToLoginFromSignup">Sign in</a></p>
+            </div>
+
+            <!-- ========== LOGIN VIEW ========== -->
+            <div id="loginView" class="hidden">
+                <div class="form-header">
+                    <h2>Welcome back</h2>
+                    <p>Sign in to your NexTalk account.</p>
+                </div>
+
+                <div class="auth-tabs">
+                    <button class="tab" data-tab="signup">Sign up</button>
+                    <button class="tab active" data-tab="login">Log in</button>
+                </div>
+
+                <form id="loginForm">
                     <div class="form-group">
-                        <label>Email</label>
-                        <input id="loginEmail" type="email" placeholder="Enter your email">
+                        <label>Email address</label>
+                        <div class="input-box">
+                            <span class="input-icon"><i class="ri-mail-line"></i></span>
+                            <input id="loginEmail" type="email" placeholder="Enter your email">
+                        </div>
                         <span class="field-error" id="loginEmailErr"></span>
                     </div>
                     <div class="form-group">
                         <label>Password</label>
                         <div class="input-box">
+                            <span class="input-icon"><i class="ri-lock-line"></i></span>
                             <input id="loginPassword" type="password" placeholder="Enter your password">
                             <span class="toggle"><i class="ri-eye-line"></i></span>
                         </div>
@@ -82,42 +174,71 @@
                         <label><input type="checkbox" id="rememberMe"> Remember me</label>
                         <a href="#" id="forgotBtn">Forgot password?</a>
                     </div>
-                    <button type="button" class="btn" id="loginBtn">Login</button>
+                    <button type="button" class="btn" id="loginBtn">Sign In</button>
                 </form>
 
-                <form id="resetForm" class="hidden">
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input id="resetEmail" type="email" placeholder="Enter your email">
-                        <span class="field-error" id="resetEmailErr"></span>
-                    </div>
-                    <button type="button" class="btn" id="resetBtn">Reset Password</button>
-                    <p class="back-link"><a href="#" id="backToLogin"><i class="ri-arrow-left-line"></i> Back to
-                            Login</a></p>
-                </form>
+                <div class="divider"><span>or continue with</span></div>
 
                 <div class="social">
-                    <button type="button" id="googleBtn">
+                    <button type="button" id="googleBtn2">
                         <i class="ri-google-fill"></i>
-                        <span>Google</span>
+                        <span>Continue with Google</span>
                     </button>
-                    <button type="button" id="appleBtn">
+                    <button type="button" id="appleBtn2">
                         <i class="ri-apple-fill"></i>
-                        <span>Apple</span>
+                        <span>Continue with Apple</span>
                     </button>
                 </div>
+
+                <p class="switch-link">Don't have an account? <a href="#" id="switchToSignup">Sign up</a></p>
             </div>
 
-            <div class="auth-right">
-                <img id="authImage" src="../Assets/Auth/login.png" alt="auth">
+            <!-- ========== RESET VIEW ========== -->
+            <div id="resetView" class="hidden">
+                <div class="form-header">
+                    <h2>Reset your password</h2>
+                    <p>We'll send a reset link to your inbox.</p>
+                </div>
+
+                <p class="reset-info">
+                    Enter the email address linked to your account and we'll send you a password reset link.
+                </p>
+
+                <form id="resetForm">
+                    <div class="form-group">
+                        <label>Email address</label>
+                        <div class="input-box">
+                            <span class="input-icon"><i class="ri-mail-line"></i></span>
+                            <input id="resetEmail" type="email" placeholder="Enter your email">
+                        </div>
+                        <span class="field-error" id="resetEmailErr"></span>
+                    </div>
+                    <button type="button" class="btn" id="resetBtn">Send Reset Link</button>
+                </form>
+
+                <p class="back-link">
+                    <a href="#" id="backToLogin"><i class="ri-arrow-left-line"></i> Back to Login</a>
+                </p>
             </div>
 
         </div>
-    </section>
 
-    <!-- script file here -->
-    <script type="module" src="../javascript/auth.js"></script>
+        <!-- Footer -->
+        <div class="auth-footer">
+            &copy; 2024 NexTalk. All rights reserved.
+            <br>
+            <a href="#">Privacy Policy</a>
+            <span class="dot">•</span>
+            <a href="#">Terms of Service</a>
+            <span class="dot">•</span>
+            <a href="#">Contact Us</a>
+        </div>
+
+    </div>
+
+</div>
+
+<script type="module" src="../javascript/auth.js"></script>
 
 </body>
-
 </html>
