@@ -4586,3 +4586,10 @@ button#vpCloseBtn:hover {
 		opacity: 0
 	}
 }
+
+
+
+[data-theme="dark"] #blockedNoticeBar {
+  background: #2a1515;
+  border-color: #5a2222;
+}
