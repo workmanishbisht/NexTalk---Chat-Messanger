@@ -1,5 +1,6 @@
 // chatdashboard.js — 
 
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getAuth,
@@ -89,11 +90,15 @@ let _audioChunks = [];
 let _recStream = null;
 
 // ─── Presence heartbeat (FIX v4) ──────────────────────────────────────────────
-// ONLINE_THRESHOLD: seconds after which a user is considered offline if no heartbeat
 const ONLINE_THRESHOLD_SECONDS = 90;
-// Heartbeat interval: ping Firestore every 30s to stay "online"
 const HEARTBEAT_INTERVAL_MS = 30000;
 let _presenceHeartbeatTimer = null;
+
+// ─── Block / Unblock State (v5) ───────────────────────────────────────────────
+let blockedUsers = new Set();    // UIDs jinhe maine block kiya
+let blockedByUsers = new Set();  // UIDs jinhone mujhe block kiya
+let blockUnsub = null;
+let blockedByUnsub = null;
 
 const ROOM_GENERAL = "general";
 const COLORS = ["#008080", "#0e9f6e", "#0ea5e9", "#7c3aed", "#db2777", "#ea580c", "#0891b2"];
@@ -109,29 +114,29 @@ function getAllPresenceUsers() {
 }
 
 const EMOJIS = [
-  "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍",
-  "🤩", "😘", "😗", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫",
-  "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥", "😌", "😔", "😪", "🤤",
-  "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "🥸",
-  "😎", "🤓", "🧐", "😕", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨",
-  "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠",
-  "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡", "👹", "👺", "👻", "👽", "👾", "🤖", "😺", "😸",
-  "😹", "😻", "😼", "😽", "🙀", "😿", "😾", "👋", "🤚", "🖐", "✋", "🖖", "👌", "🤌", "🤏",
-  "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛",
-  "🤜", "👏", "🙌", "🫶", "👐", "🤲", "🤝", "🙏", "💪", "❤️", "🧡", "💛", "💚", "💙", "💜",
-  "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "☮️", "✝️",
-  "☯️", "🔥", "⚡", "🌈", "⭐", "🌟", "💫", "✨", "🎉", "🎊", "🎈",
+  "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍",
+  "🤩","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫",
+  "🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤",
+  "😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸",
+  "😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨",
+  "😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠",
+  "🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖","😺","😸",
+  "😹","😻","😼","😽","🙀","😿","😾","👋","🤚","🖐","✋","🖖","👌","🤌","🤏",
+  "✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","👍","👎","✊","👊","🤛",
+  "🤜","👏","🙌","🫶","👐","🤲","🤝","🙏","💪","❤️","🧡","💛","💚","💙","💜",
+  "🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️",
+  "☯️","🔥","⚡","🌈","⭐","🌟","💫","✨","🎉","🎊","🎈",
 ];
 
 const STICKERS = [
-  "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵",
-  "🙈", "🙉", "🙊", "🐔", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄",
-  "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷", "🦂", "🐢", "🐍", "🦎", "🦖", "🦕",
-  "🐙", "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆",
-  "🦓", "🦍", "🦧", "🦣", "🌸", "🌺", "🌻", "🌹", "🌷", "🌼", "💐", "🍀", "🌿", "🌱", "🌲",
-  "🌳", "🌴", "🍁", "🍂", "🍃", "🍎", "🍊", "🍋", "🍇", "🍓", "🫐", "🍈", "🍑", "🍒", "🥝",
-  "🍅", "🥥", "🥦", "🌽", "🍕", "🍔", "🌮", "🍜", "🍣", "🍩", "🎂", "🍦", "☕", "🧋", "🍺",
-  "🎮", "⚽", "🏀", "🎸", "🎵", "🎨", "🚀",
+  "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵",
+  "🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄",
+  "🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷","🦂","🐢","🐍","🦎","🦖","🦕",
+  "🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆",
+  "🦓","🦍","🦧","🦣","🌸","🌺","🌻","🌹","🌷","🌼","💐","🍀","🌿","🌱","🌲",
+  "🌳","🌴","🍁","🍂","🍃","🍎","🍊","🍋","🍇","🍓","🫐","🍈","🍑","🍒","🥝",
+  "🍅","🥥","🥦","🌽","🍕","🍔","🌮","🍜","🍣","🍩","🎂","🍦","☕","🧋","🍺",
+  "🎮","⚽","🏀","🎸","🎵","🎨","🚀",
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -553,6 +558,8 @@ document.addEventListener("click", () => { closeMoreDropdown(); });
 pdLogout?.addEventListener("click", async () => {
   await setPresenceOffline();
   stopPresenceHeartbeat();
+  if (blockUnsub) blockUnsub();
+  if (blockedByUnsub) blockedByUnsub();
   await signOut(auth);
   window.location.href = "./authentication.html";
 });
@@ -616,8 +623,6 @@ async function init() {
 
   syncProfileToFirestore().catch(e => console.warn("profile sync:", e));
 
-  // FIX v4: Only mark offline on actual page unload (browser close / navigation away)
-  // Do NOT use visibilitychange to set offline — prevents false offline on tab switch
   window.addEventListener("beforeunload", () => {
     setPresenceOffline();
     stopPresenceHeartbeat();
@@ -628,21 +633,18 @@ async function init() {
   renderContactsList();
   listenPresence();
   listenGroups();
+  listenBlockedUsers();
   openRoom(ROOM_GENERAL, getGeneralChatName(), null, true, null, false);
   startPresenceHeartbeat();
   initViewProfilePanel();
   initAboutEditButton();
   initMicButton();
+  initIpBlockBtn();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ─── FIX v4: PRESENCE SYSTEM (heartbeat-based, no false offline) ──────────
+// FIX v4: PRESENCE SYSTEM (heartbeat-based)
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Mark current user as online in Firestore presence collection.
- * Stores updatedAt (server timestamp) used by isTrulyOnline().
- */
 async function setPresenceOnline() {
   if (!ME) return;
   try {
@@ -660,9 +662,6 @@ async function setPresenceOnline() {
   }
 }
 
-/**
- * Mark current user as offline. Only called on actual logout / beforeunload.
- */
 async function setPresenceOffline() {
   if (!ME) return;
   try {
@@ -676,16 +675,11 @@ async function setPresenceOffline() {
   }
 }
 
-// Legacy alias used elsewhere in code
 async function setPresence(online) {
   if (online) return setPresenceOnline();
   return setPresenceOffline();
 }
 
-/**
- * Heartbeat: ping Firestore every 30s to keep presence fresh.
- * This is the ONLY way we detect active users — no boolean flip on tab hide.
- */
 function startPresenceHeartbeat() {
   stopPresenceHeartbeat();
   _presenceHeartbeatTimer = setInterval(async () => {
@@ -708,25 +702,417 @@ function stopPresenceHeartbeat() {
   }
 }
 
-/**
- * FIX v4: Determine if a user is truly online using updatedAt timestamp.
- * A user is online if their last heartbeat was within ONLINE_THRESHOLD_SECONDS.
- * Falls back to `online` boolean if updatedAt is missing (legacy data).
- */
 function isTrulyOnline(presenceData) {
   if (!presenceData) return false;
-
-  // Use updatedAt (heartbeat timestamp) as primary signal
   const updatedAt = presenceData.updatedAt || presenceData.lastSeen;
   if (updatedAt) {
     const lastPing = updatedAt.toDate ? updatedAt.toDate() : new Date(updatedAt);
     const secondsAgo = (Date.now() - lastPing.getTime()) / 1000;
     return secondsAgo < ONLINE_THRESHOLD_SECONDS;
   }
-
-  // Legacy fallback: trust the boolean if no timestamp
   return presenceData.online === true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BLOCK / UNBLOCK SYSTEM (v5)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Real-time listeners for blocked users in both directions.
+ * - blockedUsers: UIDs I blocked
+ * - blockedByUsers: UIDs who blocked me
+ */
+function listenBlockedUsers() {
+  if (!ME) return;
+
+  if (blockUnsub) blockUnsub();
+  blockUnsub = onSnapshot(
+    collection(db, "users", ME.uid, "blockedUsers"),
+    (snap) => {
+      blockedUsers.clear();
+      snap.docs.forEach(d => blockedUsers.add(d.id));
+      updateBlockedUI();
+    },
+    (err) => console.warn("blockedUsers listener error:", err)
+  );
+
+  if (blockedByUnsub) blockedByUnsub();
+  blockedByUnsub = onSnapshot(
+    collection(db, "users", ME.uid, "blockedBy"),
+    (snap) => {
+      blockedByUsers.clear();
+      snap.docs.forEach(d => blockedByUsers.add(d.id));
+      updateBlockedUI();
+    },
+    (err) => console.warn("blockedBy listener error:", err)
+  );
+}
+
+/**
+ * Block a user
+ */
+async function blockUser(otherUid, otherName) {
+  if (!ME || !otherUid) return;
+
+  try {
+    await setDoc(doc(db, "users", ME.uid, "blockedUsers", otherUid), {
+      blockedAt: serverTimestamp(),
+      name: otherName || otherUid,
+    });
+
+    await setDoc(doc(db, "users", otherUid, "blockedBy", ME.uid), {
+      blockedAt: serverTimestamp(),
+    });
+
+    showToast(`${escHtml(otherName || "User")} has been blocked 🚫`, "success");
+
+    updateBlockedUI();
+    updateBlockMenuLabels();
+
+  } catch (err) {
+    showToast("Failed to block user: " + err.message, "error");
+  }
+}
+
+/**
+ * Unblock a user
+ */
+async function unblockUser(otherUid, otherName) {
+  if (!ME || !otherUid) return;
+
+  try {
+    await deleteDoc(doc(db, "users", ME.uid, "blockedUsers", otherUid));
+
+    await deleteDoc(doc(db, "users", otherUid, "blockedBy", ME.uid));
+
+    showToast(`${escHtml(otherName || "User")} has been unblocked ✓`, "success");
+
+    updateBlockedUI();
+    updateBlockMenuLabels();
+
+  } catch (err) {
+    showToast("Failed to unblock user: " + err.message, "error");
+  }
+}
+
+/** Get other user UID from active room */
+function getOtherUidFromActiveRoom() {
+  if (!activeRoomId || activeRoomId === ROOM_GENERAL || activeRoomMeta.isGroup) {
+    return null;
+  }
+
+  const parts = activeRoomId.split("__");
+  return parts.find(p => p !== ME?.uid) || null;
+}
+
+/** Check if current chat is blocked */
+function isCurrentChatBlocked() {
+  const otherUid = getOtherUidFromActiveRoom();
+
+  if (!otherUid) return false;
+
+  return blockedUsers.has(otherUid) || blockedByUsers.has(otherUid);
+}
+
+/** Did I block the other user? */
+function didIBlockOther() {
+  const otherUid = getOtherUidFromActiveRoom();
+
+  if (!otherUid) return false;
+
+  return blockedUsers.has(otherUid);
+}
+
+/** Did the other user block me? */
+function amIBlockedByOther() {
+  const otherUid = getOtherUidFromActiveRoom();
+
+  if (!otherUid) return false;
+
+  return blockedByUsers.has(otherUid);
+}
+
+/**
+ * Update blocked UI
+ */
+function updateBlockedUI() {
+
+  if (
+    !activeRoomId ||
+    activeRoomId === ROOM_GENERAL ||
+    activeRoomMeta.isGroup
+  ) {
+    showInputBarEnabled(true);
+    updateBlockMenuLabels();
+    return;
+  }
+
+  const otherUid = getOtherUidFromActiveRoom();
+  const blocked = isCurrentChatBlocked();
+
+  if (blocked) {
+    showInputBarEnabled(false);
+  } else {
+    showInputBarEnabled(true);
+  }
+
+  updateBlockMenuLabels();
+  updateIpBlockBtn(otherUid);
+}
+
+/**
+ * Enable / Disable input area
+ */
+function showInputBarEnabled(enabled) {
+
+  const existing = document.getElementById("blockedNoticeBar");
+
+  if (existing) existing.remove();
+
+  if (!enabled) {
+
+    const inputBar = document.querySelector(".input-bar");
+
+    if (!inputBar) return;
+
+    const otherUid = getOtherUidFromActiveRoom();
+
+    const otherName =
+      presenceUsersMap.get(otherUid)?.name ||
+      getDmRoom(otherUid)?.name ||
+      "User";
+
+    const bar = document.createElement("div");
+
+    bar.id = "blockedNoticeBar";
+
+    bar.style.cssText = [
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "gap:10px",
+      "padding:12px 16px",
+      "background:#fff0f0",
+      "border-top:1px solid #fecaca",
+      "font-size:13px",
+      "font-weight:600",
+      "color:var(--error)",
+      "flex-shrink:0",
+    ].join(";");
+
+    if (didIBlockOther()) {
+
+      bar.innerHTML = `
+        <i class="ri-forbid-line" style="font-size:16px;flex-shrink:0;"></i>
+
+        <span>
+          You blocked <strong>${escHtml(otherName)}</strong>
+        </span>
+
+        <button
+          id="blockedNoticeUnblockBtn"
+          style="
+            margin-left:8px;
+            padding:5px 16px;
+            background:#fff;
+            border:1.5px solid #f87171;
+            border-radius:8px;
+            color:var(--error);
+            font-size:12px;
+            font-weight:700;
+            font-family:'Work Sans',sans-serif;
+            cursor:pointer;
+            transition:background .15s;
+          "
+          onmouseover="this.style.background='#fee2e2'"
+          onmouseout="this.style.background='#fff'"
+        >
+          Unblock
+        </button>
+      `;
+
+      bar
+        .querySelector("#blockedNoticeUnblockBtn")
+        ?.addEventListener("click", () => {
+          unblockUser(otherUid, otherName);
+        });
+
+    } else {
+
+      bar.innerHTML = `
+        <i class="ri-forbid-line" style="font-size:16px;flex-shrink:0;"></i>
+
+        <span>
+          <strong>${escHtml(otherName)}</strong> blocked you.
+          Messaging is unavailable.
+        </span>
+      `;
+    }
+
+    inputBar.insertAdjacentElement("beforebegin", bar);
+
+    if (msgInput) {
+      msgInput.disabled = true;
+      msgInput.placeholder = "Messaging unavailable";
+    }
+
+    if (sendBtn) sendBtn.disabled = true;
+    if (micBtn) micBtn.disabled = true;
+    if (attachBtn) attachBtn.disabled = true;
+    if (emojiToggleBtn) emojiToggleBtn.disabled = true;
+
+  } else {
+
+    if (msgInput) {
+      msgInput.disabled = false;
+      msgInput.placeholder = "Type a message…";
+    }
+
+    if (sendBtn) sendBtn.disabled = false;
+    if (micBtn) micBtn.disabled = false;
+    if (attachBtn) attachBtn.disabled = false;
+    if (emojiToggleBtn) emojiToggleBtn.disabled = false;
+  }
+}
+
+/**
+ * Update dropdown labels
+ */
+function updateBlockMenuLabels() {
+
+  const otherUid = getOtherUidFromActiveRoom();
+
+  const isBlocked = otherUid && blockedUsers.has(otherUid);
+
+  if (mdBlock) {
+
+    if (isBlocked) {
+
+      mdBlock.innerHTML =
+        `<i class="ri-user-received-line"></i> Unblock User`;
+
+      mdBlock.classList.remove("more-item-danger");
+
+      mdBlock.style.color = "var(--primary)";
+
+    } else {
+
+      mdBlock.innerHTML =
+        `<i class="ri-forbid-line"></i> Block User`;
+
+      mdBlock.classList.add("more-item-danger");
+
+      mdBlock.style.color = "";
+    }
+  }
+}
+
+/**
+ * Update right panel block button
+ */
+function updateIpBlockBtn(otherUid) {
+
+  const btn = document.getElementById("ipBlockUserBtn");
+
+  if (!btn || !otherUid) return;
+
+  const isBlocked = blockedUsers.has(otherUid);
+
+  if (isBlocked) {
+
+    btn.innerHTML =
+      `<i class="ri-user-received-line"></i> Unblock User`;
+
+    btn.style.background = "#f0fff4";
+    btn.style.color = "#16a34a";
+    btn.style.borderColor = "#86efac";
+
+  } else {
+
+    btn.innerHTML =
+      `<i class="ri-forbid-line"></i> Block User`;
+
+    btn.style.background = "";
+    btn.style.color = "";
+    btn.style.borderColor = "";
+  }
+}
+
+/**
+ * Right panel block button
+ */
+function initIpBlockBtn() {
+
+  const btn = document.getElementById("ipBlockUserBtn");
+
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+
+    const otherUid = getOtherUidFromActiveRoom();
+
+    if (!otherUid) {
+      showToast("Please open a direct chat first.", "warning");
+      return;
+    }
+
+    const otherName =
+      presenceUsersMap.get(otherUid)?.name ||
+      getDmRoom(otherUid)?.name ||
+      "User";
+
+    if (blockedUsers.has(otherUid)) {
+
+      await unblockUser(otherUid, otherName);
+
+    } else {
+
+      const confirmed = confirm(
+        `Block "${otherName}"?\n\n` +
+        `They won't be able to message or call you until you unblock them.`
+      );
+
+      if (!confirmed) return;
+
+      await blockUser(otherUid, otherName);
+    }
+  });
+}
+
+// ─── BLOCK / UNBLOCK from More Dropdown ─────────────────────────────────────
+
+mdBlock?.addEventListener("click", async () => {
+
+  closeMoreDropdown();
+
+  const otherUid = getOtherUidFromActiveRoom();
+
+  if (!otherUid) {
+    showToast("This action is only available in direct chats.", "warning");
+    return;
+  }
+
+  const otherName =
+    presenceUsersMap.get(otherUid)?.name ||
+    getDmRoom(otherUid)?.name ||
+    "User";
+
+  if (blockedUsers.has(otherUid)) {
+
+    await unblockUser(otherUid, otherName);
+
+  } else {
+
+    const confirmed = confirm(
+      `Block "${otherName}"?\n\n` +
+      `They won't be able to message or call you until you unblock them.`
+    );
+
+    if (!confirmed) return;
+
+    await blockUser(otherUid, otherName);
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLEANUP DUPLICATE ROOMS
@@ -807,13 +1193,13 @@ async function loadExistingDmRooms() {
           if (lastMsg.uid !== "system" && !lastMsg.deleted) {
             lastText = lastMsg.type === "image" ? "📷 Image"
               : lastMsg.type === "file" ? `📎 ${lastMsg.fileName || "File"}`
-                : lastMsg.type === "sticker" ? lastMsg.text
-                  : lastMsg.type === "voice" ? "🎤 Voice message"
-                    : (lastMsg.text || "");
+              : lastMsg.type === "sticker" ? lastMsg.text
+              : lastMsg.type === "voice" ? "🎤 Voice message"
+              : (lastMsg.text || "");
           }
           lastTs = lastMsg.createdAt?.toDate ? lastMsg.createdAt.toDate() : null;
         }
-      } catch (_) { }
+      } catch (_) {}
 
       upsertDmRoom(otherUid, {
         roomId,
@@ -860,13 +1246,8 @@ async function registerDmRoom(roomId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ─── FIX v4: BIO/STATUS EDIT — About section in right info panel ──────────
+// FIX v4: BIO/STATUS EDIT
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Initialise the edit button for the About/Bio field in the own profile panel.
- * This replaces the static ipAbout display with an inline editable field.
- */
 function initAboutEditButton() {
   if (!ipAboutEditBtn) return;
   ipAboutEditBtn.addEventListener("click", (e) => {
@@ -879,11 +1260,8 @@ function openAboutEditor() {
   if (!ipAbout) return;
   const currentText = ME?.status || "Hey there! I'm using NexTalk";
 
-  // Replace the about paragraph with an inline editor
   const section = ipAbout.parentElement;
   if (!section) return;
-
-  // Prevent double-open
   if (section.querySelector(".about-edit-wrap")) return;
 
   ipAbout.style.display = "none";
@@ -916,7 +1294,6 @@ function openAboutEditor() {
   wrap.appendChild(saveBtn);
   wrap.appendChild(cancelBtn);
 
-  // Insert after ipAbout
   ipAbout.insertAdjacentElement("afterend", wrap);
   input.focus();
   input.select();
@@ -947,27 +1324,17 @@ function closeAboutEditor(wrap, displayText) {
   if (ipAboutEditBtn) ipAboutEditBtn.style.display = "";
 }
 
-/**
- * FIX v4: Save updated bio/status to:
- * 1. ME state object
- * 2. localStorage profile
- * 3. Firestore users/{uid}
- * 4. Firestore presence/{uid} (so real-time listeners see it instantly)
- */
 async function saveAboutStatus(newStatus) {
   if (!ME) return;
 
-  // 1. Update in-memory state
   ME.status = newStatus;
 
-  // 2. Update localStorage
   const profile = loadMyProfile(ME.uid);
   if (profile) {
     profile.status = newStatus;
     localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
   }
 
-  // 3. Update Firestore users document
   try {
     await setDoc(doc(db, "users", ME.uid), {
       status: newStatus,
@@ -977,7 +1344,6 @@ async function saveAboutStatus(newStatus) {
     console.warn("saveAboutStatus users error:", err);
   }
 
-  // 4. Update Firestore presence document so online listeners pick it up instantly
   try {
     await setDoc(doc(db, "presence", ME.uid), {
       status: newStatus,
@@ -1002,8 +1368,6 @@ function renderOwnProfileInInfoPanel() {
 
   if (ipName) ipName.textContent = ME.name;
   if (ipUsername) ipUsername.textContent = `@${ME.name.toLowerCase().replace(/\s+/g, "")}`;
-
-  // FIX v4: Always read from ME.status (not hardcoded)
   if (ipAbout) ipAbout.textContent = ME.status || "Hey there! I'm using NexTalk";
   if (ipStatus) ipStatus.textContent = "Your profile";
 
@@ -1018,7 +1382,7 @@ function renderOwnProfileInInfoPanel() {
       const p = loadMyProfile(ME.uid);
       if (p) { p.phone = val; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p)); ME.phone = val; }
       showToast("Phone number saved ✓", "success");
-      syncProfileToFirestore().catch(() => { });
+      syncProfileToFirestore().catch(() => {});
     }, false);
   }
 
@@ -1028,7 +1392,7 @@ function renderOwnProfileInInfoPanel() {
       const p = loadMyProfile(ME.uid);
       if (p) { p.dob = val; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p)); ME.dob = val; }
       showToast("Date of birth saved ✓", "success");
-      syncProfileToFirestore().catch(() => { });
+      syncProfileToFirestore().catch(() => {});
     }, false, "date");
   }
 
@@ -1108,7 +1472,7 @@ function renderLocationField(el, location) {
         ME.location = { ...ME.location, display: newVal };
       }
       showToast("Location saved ✓", "success");
-      syncProfileToFirestore().catch(() => { });
+      syncProfileToFirestore().catch(() => {});
       renderLocationField(el, ME.location);
     };
 
@@ -1179,7 +1543,7 @@ function renderEditableField(el, value, fieldName, onSave, readonly = false, inp
       input.value = isPlaceholder ? "" : (value || "");
       input.placeholder = fieldName === "phone" ? "+91 98765 43210"
         : fieldName === "dob" ? "YYYY-MM-DD"
-          : "your@email.com";
+        : "your@email.com";
       input.style.cssText = `flex:1;border:none;border-bottom:1.5px solid var(--primary);background:transparent;font-family:'Work Sans',sans-serif;font-size:13px;color:var(--text);outline:none;padding:2px 4px;min-width:0;`;
 
       const saveBtn = document.createElement("button");
@@ -1214,7 +1578,7 @@ function renderEditableField(el, value, fieldName, onSave, readonly = false, inp
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ─── FIX v4: LISTEN PRESENCE — uses isTrulyOnline() with timestamp ────────
+// FIX v4: LISTEN PRESENCE
 // ═══════════════════════════════════════════════════════════════════════════
 function listenPresence() {
   if (presenceUnsub) presenceUnsub();
@@ -1229,7 +1593,6 @@ function listenPresence() {
         return;
       }
 
-      // FIX v4: isTrulyOnline uses updatedAt timestamp, not just boolean
       const online = isTrulyOnline(data);
 
       upsertPresenceUser(uid, {
@@ -1240,8 +1603,6 @@ function listenPresence() {
         lastSeen: data.updatedAt || data.lastSeen || null,
       });
 
-      // FIX v4: If this is our own status update (bio change from another tab),
-      // update our own ME.status and ipAbout
       if (uid === ME?.uid && data.status && data.status !== ME.status) {
         ME.status = data.status;
         if (ipAbout && !ipAbout.parentElement?.querySelector(".about-edit-wrap")) {
@@ -1278,7 +1639,6 @@ function listenPresence() {
 
     renderContactsList();
 
-    // FIX v4: Update view profile panel online badge in real time
     if (currentViewedUid) {
       const viewedUser = presenceUsersMap.get(currentViewedUid);
       if (viewedUser && vpOnlineBadge) {
@@ -1302,7 +1662,6 @@ function updateChatHeaderPresence(user) {
 // ═══════════════════════════════════════════════════════════════════════════
 // VIEW PROFILE PANEL
 // ═══════════════════════════════════════════════════════════════════════════
-
 function initViewProfilePanel() {
   vpCloseBtn?.addEventListener("click", closeViewProfile);
   viewProfileOverlay?.addEventListener("click", closeViewProfile);
@@ -1320,6 +1679,29 @@ function initViewProfilePanel() {
     closeViewProfile();
     startDmWithUser(roomId, currentViewedUid, user);
   });
+
+  // View Profile panel — Block/Unblock button
+  const vpBlockBtn = document.getElementById("vpBlockBtn");
+  if (vpBlockBtn) {
+    vpBlockBtn.addEventListener("click", async () => {
+      if (!currentViewedUid) return;
+      const name = vpName?.textContent || "User";
+      if (blockedUsers.has(currentViewedUid)) {
+        await unblockUser(currentViewedUid, name);
+        vpBlockBtn.innerHTML = `<i class="ri-forbid-line"></i> Block User`;
+        vpBlockBtn.style.background = "";
+        vpBlockBtn.style.color = "";
+        vpBlockBtn.style.borderColor = "";
+      } else {
+        if (!confirm(`"${name}" ko block karein?\nWo aapko message nahi kar payega jab tak unblock na karein.`)) return;
+        await blockUser(currentViewedUid, name);
+        vpBlockBtn.innerHTML = `<i class="ri-user-received-line"></i> Unblock User`;
+        vpBlockBtn.style.background = "#f0fff4";
+        vpBlockBtn.style.color = "#16a34a";
+        vpBlockBtn.style.borderColor = "#86efac";
+      }
+    });
+  }
 }
 
 async function openViewProfile(uid) {
@@ -1329,6 +1711,22 @@ async function openViewProfile(uid) {
     currentViewedUid = uid;
     showViewProfileSkeleton();
     await loadViewProfileData(uid);
+  }
+
+  // Sync block button state in view profile panel
+  const vpBlockBtn = document.getElementById("vpBlockBtn");
+  if (vpBlockBtn) {
+    if (blockedUsers.has(uid)) {
+      vpBlockBtn.innerHTML = `<i class="ri-user-received-line"></i> Unblock User`;
+      vpBlockBtn.style.background = "#f0fff4";
+      vpBlockBtn.style.color = "#16a34a";
+      vpBlockBtn.style.borderColor = "#86efac";
+    } else {
+      vpBlockBtn.innerHTML = `<i class="ri-forbid-line"></i> Block User`;
+      vpBlockBtn.style.background = "";
+      vpBlockBtn.style.color = "";
+      vpBlockBtn.style.borderColor = "";
+    }
   }
 
   viewProfilePanel?.classList.add("open");
@@ -1379,7 +1777,6 @@ async function loadViewProfileData(uid) {
   viewProfileUnsub = onSnapshot(presenceRef, (presSnap) => {
     const presData = presSnap.exists() ? presSnap.data() : null;
     const mapUser = presenceUsersMap.get(uid);
-    // FIX v4: use isTrulyOnline for view profile panel too
     const isOnline = presData ? isTrulyOnline(presData) : (mapUser?.online ?? false);
 
     const profile = {
@@ -1402,8 +1799,6 @@ async function loadViewProfileData(uid) {
   const usersUnsub = onSnapshot(doc(db, "users", uid), (snap) => {
     if (!snap.exists()) return;
     cachedUserProfile = snap.data();
-    const mapUser = presenceUsersMap.get(uid);
-    // FIX v4: re-check online from presence map
     const presUser = presenceUsersMap.get(uid);
     const isOnline = presUser?.online ?? false;
     renderViewProfileUI(uid, {
@@ -2128,6 +2523,12 @@ function openRoom(roomId, name, avatar, isPublic, targetUser = null, isGroup = f
   // Stop any ongoing recording when switching rooms
   if (_isRecording) _stopRecording(false);
 
+  // Update block UI for this room
+  setTimeout(() => {
+    updateBlockedUI();
+    updateBlockMenuLabels();
+  }, 50);
+
   listenMessages(roomId);
   listenTyping(roomId);
 }
@@ -2135,7 +2536,12 @@ function openRoom(roomId, name, avatar, isPublic, targetUser = null, isGroup = f
 // ═══════════════════════════════════════════════════════════════════════════
 // MORE MENU
 // ═══════════════════════════════════════════════════════════════════════════
-function openMoreDropdown() { moreDropdown.classList.remove("hidden"); moreDropdownOpen = true; updatePinMenuLabel(); }
+function openMoreDropdown() {
+  moreDropdown.classList.remove("hidden");
+  moreDropdownOpen = true;
+  updatePinMenuLabel();
+  updateBlockMenuLabels();
+}
 function closeMoreDropdown() { moreDropdown?.classList.add("hidden"); moreDropdownOpen = false; }
 
 moreMenuBtn?.addEventListener("click", (e) => {
@@ -2156,7 +2562,7 @@ mdPinChat?.addEventListener("click", () => {
   if (!activeRoomId) return;
   const pinId = activeRoomId === ROOM_GENERAL ? ROOM_GENERAL
     : activeRoomId.includes("__") ? activeRoomId.split("__").find(p => p !== ME.uid) || activeRoomId
-      : activeRoomId;
+    : activeRoomId;
   togglePin(pinId);
 });
 
@@ -2216,7 +2622,24 @@ mdDeleteChat?.addEventListener("click", async () => {
   } catch { showToast("Failed to delete chat", "error"); }
 });
 
-mdBlock?.addEventListener("click", () => { closeMoreDropdown(); showToast("Block feature coming soon!", "warning"); });
+// ─── BLOCK / UNBLOCK from More Dropdown ─────────────────────────────────────
+mdBlock?.addEventListener("click", async () => {
+  closeMoreDropdown();
+  const otherUid = getOtherUidFromActiveRoom();
+  if (!otherUid) {
+    showToast("Yeh action sirf DM chats mein available hai", "warning");
+    return;
+  }
+  const otherName = presenceUsersMap.get(otherUid)?.name
+    || getDmRoom(otherUid)?.name
+    || "User";
+  if (blockedUsers.has(otherUid)) {
+    await unblockUser(otherUid, otherName);
+  } else {
+    if (!confirm(`"${otherName}" ko block karein?\nWo aapko message nahi kar payega jab tak unblock na karein.`)) return;
+    await blockUser(otherUid, otherName);
+  }
+});
 
 mdAddFav?.addEventListener("click", () => {
   closeMoreDropdown();
@@ -2282,7 +2705,7 @@ selectDelete?.addEventListener("click", async () => {
   if (!selectedMsgIds.size) return;
   if (!confirm(`Delete ${selectedMsgIds.size} message(s)?`)) return;
   for (const id of selectedMsgIds) {
-    try { await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null }); } catch (_) { }
+    try { await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null }); } catch (_) {}
   }
   showToast(`${selectedMsgIds.size} message(s) deleted`, "success");
   exitSelectMode();
@@ -2322,9 +2745,9 @@ function updateDmRoomPreview(roomId, data) {
 
   const lastText = data.type === "image" ? "📷 Image"
     : data.type === "file" ? `📎 ${data.fileName || "File"}`
-      : data.type === "sticker" ? data.text
-        : data.type === "voice" ? "🎤 Voice message"
-          : (data.text || "");
+    : data.type === "sticker" ? data.text
+    : data.type === "voice" ? "🎤 Voice message"
+    : (data.text || "");
   const lastTs = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
 
   upsertDmRoom(otherUid, { lastText, lastTs });
@@ -2429,7 +2852,6 @@ function buildBubbleContent(data, timeStr, isMine) {
       <div class="msg-meta">${timeStr}${editedLabel}${isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : ""}</div>`;
   }
 
-  // ── Voice message bubble ──────────────────────────────────────────────
   if (data.type === "voice") {
     const src = escHtml(data.fileUrl || "");
     const duration = escHtml(data.duration || "0:00");
@@ -2454,7 +2876,6 @@ function buildBubbleContent(data, timeStr, isMine) {
 }
 
 function bindMsgActions(row, data, id) {
-  // Voice play button
   const playBtn = row.querySelector(".voice-play-btn");
   if (playBtn) {
     let audio = null;
@@ -2495,7 +2916,6 @@ function bindMsgActions(row, data, id) {
     });
   }
 
-  // Text / file edit-delete actions
   row.querySelectorAll(".msg-act-btn").forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2565,6 +2985,11 @@ async function confirmDeleteMsg(id) {
 // ═══════════════════════════════════════════════════════════════════════════
 async function sendMessage() {
   if (!ME || !activeRoomId) return;
+  // Block check — send nahi hoga agar blocked hai
+  if (isCurrentChatBlocked()) {
+    showToast("Aap is user ko message nahi kar sakte", "warning");
+    return;
+  }
   const text = msgInput.value.trim();
   if (!text) return;
   msgInput.value = "";
@@ -2575,7 +3000,7 @@ async function sendMessage() {
       text, type: "text", deleted: false, edited: false, createdAt: serverTimestamp(),
     });
     if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) {
-      registerDmRoom(activeRoomId).catch(() => { });
+      registerDmRoom(activeRoomId).catch(() => {});
     }
   } catch (err) {
     showToast("Failed to send message: " + err.message, "error");
@@ -2591,6 +3016,11 @@ msgInput?.addEventListener("keydown", (e) => {
 // ═══════════════════════════════════════════════════════════════════════════
 async function sendFile(file, msgType) {
   if (!ME || !activeRoomId || !file) return;
+  // Block check
+  if (isCurrentChatBlocked()) {
+    showToast("Aap is user ko file nahi bhej sakte", "warning");
+    return;
+  }
   if (file.size > 10 * 1024 * 1024) { showToast("File too large. Max 10 MB allowed.", "warning"); return; }
 
   showToast("Uploading…", "success");
@@ -2616,7 +3046,7 @@ async function sendFile(file, msgType) {
     });
 
     if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) {
-      registerDmRoom(activeRoomId).catch(() => { });
+      registerDmRoom(activeRoomId).catch(() => {});
     }
     showToast("File sent! ✓", "success");
   } catch (err) {
@@ -2642,6 +3072,7 @@ attachMenu?.addEventListener("click", (e) => e.stopPropagation());
 // ═══════════════════════════════════════════════════════════════════════════
 msgInput?.addEventListener("input", async () => {
   if (!ME || !activeRoomId) return;
+  if (isCurrentChatBlocked()) return; // Typing indicator nahi bhejenge blocked chat mein
   const now = Date.now();
   if (now - lastTypingSent > 1800) {
     lastTypingSent = now;
@@ -2655,7 +3086,7 @@ msgInput?.addEventListener("input", async () => {
 
 async function clearMyTyping() {
   if (!ME || !activeRoomId) return;
-  try { await deleteDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid)); } catch (_) { }
+  try { await deleteDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid)); } catch (_) {}
 }
 
 function listenTyping(roomId) {
@@ -2739,13 +3170,14 @@ function renderEmojiTab(tab) {
 
 async function sendSticker(sticker) {
   if (!ME || !activeRoomId) return;
+  if (isCurrentChatBlocked()) { showToast("Messaging unavailable", "warning"); return; }
   closeEmojiPanel();
   await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
     uid: ME.uid, name: ME.name, avatar: ME.avatar,
     text: sticker, type: "sticker", deleted: false, createdAt: serverTimestamp(),
   });
   if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) {
-    registerDmRoom(activeRoomId).catch(() => { });
+    registerDmRoom(activeRoomId).catch(() => {});
   }
 }
 
@@ -2789,6 +3221,7 @@ function _hideRecordingUI() {
 
 async function _startRecording() {
   if (!ME || !activeRoomId) { showToast("Please open a chat first", "warning"); return; }
+  if (isCurrentChatBlocked()) { showToast("Messaging unavailable", "warning"); return; }
 
   if (!navigator.mediaDevices?.getUserMedia) {
     showToast("Microphone not supported on this browser", "warning");
@@ -2853,6 +3286,7 @@ function _stopRecording(send) {
 
 async function _uploadAndSendVoice(blob, duration) {
   if (!ME || !activeRoomId) return;
+  if (isCurrentChatBlocked()) { showToast("Messaging unavailable", "warning"); return; }
   showToast("Sending voice message…", "success");
   try {
     const fileName = `voice_${Date.now()}.webm`;
@@ -2878,7 +3312,7 @@ async function _uploadAndSendVoice(blob, duration) {
     });
 
     if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) {
-      registerDmRoom(activeRoomId).catch(() => { });
+      registerDmRoom(activeRoomId).catch(() => {});
     }
     showToast(`Voice message sent (${duration}) 🎤`, "success");
   } catch (err) {
@@ -2957,7 +3391,7 @@ async function runContactSearch(q) {
           results.push({ roomId: room.roomId, roomName: room.name, msgId: d.id, text: data.text, senderName: data.name, ts });
         }
       });
-    } catch (_) { }
+    } catch (_) {}
   }
 
   if (!results.length) {
