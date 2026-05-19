@@ -44,6 +44,102 @@
     </div>
     <div class="groups-panel-overlay" id="groupsPanelOverlay"></div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════
+         EVENTS PANEL
+         ═══════════════════════════════════════════════════════════════════ -->
+    <div class="events-panel" id="eventsPanel">
+        <div class="events-panel-header">
+            <div class="events-panel-title">
+                <i class="ri-calendar-event-line"></i> Events
+            </div>
+            <button class="icon-btn" id="createEventBtnHeader" title="Create Event"
+                style="margin-left:auto;margin-right:4px;">
+                <i class="ri-add-line"></i>
+            </button>
+            <button class="icon-btn" id="eventsPanelClose" title="Close">
+                <i class="ri-close-line"></i>
+            </button>
+        </div>
+
+        <!-- Events list view -->
+        <div class="events-list-view" id="eventsListView">
+            <div class="events-empty hidden" id="eventsEmpty">
+                <div class="events-empty-icon"><i class="ri-calendar-line"></i></div>
+                <div class="events-empty-title">No events yet</div>
+                <div class="events-empty-sub">Create an event to get started.</div>
+                <button class="btn-create-event" id="createEventBtnEmpty">
+                    <i class="ri-add-line"></i> Create Event
+                </button>
+            </div>
+            <div id="eventsContent">
+                <!-- Upcoming and Past sections rendered here -->
+            </div>
+        </div>
+    </div>
+    <div class="events-panel-overlay" id="eventsPanelOverlay"></div>
+
+    <!-- CREATE / EDIT EVENT MODAL -->
+    <div class="modal-overlay hidden" id="createEventModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="ri-calendar-event-line"></i> <span id="createEventModalTitle">Create Event</span></h3>
+                <button class="icon-btn" id="createEventModalClose"><i class="ri-close-line"></i></button>
+            </div>
+            <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
+                <div>
+                    <label class="form-label">Event Title *</label>
+                    <input type="text" id="eventTitleInput" placeholder="Enter event title…" class="nick-input"
+                        maxlength="80" />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div>
+                        <label class="form-label">Date *</label>
+                        <input type="date" id="eventDateInput" class="nick-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">Time *</label>
+                        <input type="time" id="eventTimeInput" class="nick-input" />
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label">Location</label>
+                    <input type="text" id="eventLocationInput" placeholder="e.g. Central Park, Delhi" class="nick-input"
+                        maxlength="100" />
+                </div>
+                <div>
+                    <label class="form-label">Description</label>
+                    <textarea id="eventDescInput" rows="3" placeholder="What's this event about?" class="nick-input"
+                        style="resize:none;"></textarea>
+                </div>
+                <div>
+                    <label class="form-label">Invite People <span
+                            style="font-weight:400;color:var(--text-grey);">(optional)</span></label>
+                    <input type="text" id="eventInviteInput" placeholder="Search users to invite…" class="nick-input" />
+                    <div class="event-invite-results hidden" id="eventInviteResults"></div>
+                    <div class="event-invited-chips" id="eventInvitedChips"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="createEventCancel">Cancel</button>
+                <button class="btn-primary" id="createEventSave">
+                    <i class="ri-calendar-check-line"></i> <span id="createEventSaveLabel">Create Event</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EVENT DETAIL MODAL -->
+    <div class="modal-overlay hidden" id="eventDetailModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="ri-calendar-event-line"></i> Event Details</h3>
+                <button class="icon-btn" id="eventDetailClose"><i class="ri-close-line"></i></button>
+            </div>
+            <div id="eventDetailContent" style="padding:16px 18px;"></div>
+            <div class="modal-footer" id="eventDetailFooter"></div>
+        </div>
+    </div>
+
     <!-- SIDEBAR NAV -->
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-logo">
@@ -82,11 +178,13 @@
                     <span class="nav-label">Saved</span>
                 </a>
             </li>
-            <li class="nav-item tooltip-wrap" data-tip="Events">
+            <!-- EVENTS NAV ITEM -->
+            <li class="nav-item tooltip-wrap" data-tip="Events" id="eventsNavItem">
                 <a href="#">
-                    <i class="ri-calendar-line"></i>
+                    <i class="ri-calendar-event-line"></i>
                     <span class="nav-label">Events</span>
                 </a>
+                <span class="nav-badge" id="eventsNavBadge" style="display:none;">0</span>
             </li>
             <li class="nav-item tooltip-wrap" data-tip="Files">
                 <a href="#">
@@ -166,7 +264,6 @@
                         <i class="ri-arrow-left-line"></i>
                     </button>
                     <div class="ch-avatar-wrap">
-                        <!-- Avatar is now clickable to open View Profile (set via JS) -->
                         <div class="ch-avatar" id="chAvatar"></div>
                         <span class="ch-presence" id="chPresence"></span>
                     </div>
@@ -191,7 +288,6 @@
                             <i class="ri-more-2-fill"></i>
                         </button>
                         <div class="more-dropdown hidden" id="moreDropdown">
-                            <!-- VIEW PROFILE — only shown for DM chats (hidden for General/Groups via JS) -->
                             <button class="more-item more-item-profile" id="mdViewProfile">
                                 <i class="ri-user-3-line"></i> View Profile
                             </button>
@@ -265,11 +361,8 @@
                     </div>
                 </div>
 
-                <!-- input  -->
                 <div class="input-wrap">
                     <input type="text" id="msgInput" placeholder="Type a message…" autocomplete="off" />
-
-                    <!-- Waveform (recording ke waqt dikhta hai) -->
                     <div class="waveform-wrap" id="waveform">
                         <div class="wave-bar"></div>
                         <div class="wave-bar"></div>
@@ -280,18 +373,13 @@
                         <div class="wave-bar"></div>
                         <div class="wave-bar"></div>
                     </div>
-
-                    <!-- Timer -->
                     <span class="rec-timer" id="recTimer">
                         <span class="rec-dot"></span>
                         <span id="recTime">0:00</span>
                     </span>
-
                     <button class="emoji-btn" id="emojiToggleBtn" title="Emoji & Stickers">
                         <i class="ri-emotion-happy-line"></i>
                     </button>
-
-                    <!-- MIC BUTTON -->
                     <button class="mic-btn" id="micBtn" title="Voice message" aria-label="Record voice message">
                         <i class="ri-mic-line" id="micIcon"></i>
                     </button>
@@ -310,7 +398,6 @@
             <i class="ri-close-line"></i>
         </button>
 
-        <!-- Profile Card -->
         <div class="ip-profile-card" id="ipProfileCard">
             <div class="ip-avatar-ring">
                 <div class="ip-avatar" id="ipAvatar"></div>
@@ -343,7 +430,6 @@
             </div>
         </div>
 
-        <!-- About Section -->
         <div class="ip-section">
             <div class="ip-section-header">
                 <div class="ip-section-label"><i class="ri-information-line"></i> About</div>
@@ -367,7 +453,6 @@
             </div>
         </div>
 
-        <!-- Profile Details — own profile only -->
         <div class="ip-section hidden" id="ipExtraSection">
             <div class="ip-section-label"><i class="ri-user-3-line"></i> Profile Details</div>
             <div class="ip-info-row">
@@ -388,13 +473,11 @@
             </div>
         </div>
 
-        <!-- Group members section -->
         <div class="ip-section hidden" id="ipGroupMembersSection">
             <div class="ip-section-label"><i class="ri-group-line"></i> Members</div>
             <ul class="ip-online-list" id="ipGroupMembersList"></ul>
         </div>
 
-        <!-- Shared Media -->
         <div class="ip-section" id="ipSharedMediaSection">
             <div class="ip-section-header">
                 <div class="ip-section-label"><i class="ri-image-line"></i> Shared Media</div>
@@ -406,7 +489,6 @@
             </div>
         </div>
 
-        <!-- Settings -->
         <div class="ip-section">
             <div class="ip-section-label"><i class="ri-settings-3-line"></i> Settings</div>
             <div class="ip-settings-list">
@@ -434,7 +516,6 @@
             </div>
         </div>
 
-        <!-- Block User -->
         <div class="ip-section ip-section-danger-wrap" id="ipDangerSection">
             <button class="ip-block-btn" id="ipBlockUserBtn">
                 <i class="ri-forbid-line"></i> Block User
@@ -450,34 +531,25 @@
 
     <div class="info-panel-overlay" id="infoPanelOverlay"></div>
 
-
-    <!-- ═══════════════════════════════════════════════════════════════════
-         VIEW PROFILE PANEL — Slides in from the right over the chat area
-         ═══════════════════════════════════════════════════════════════════ -->
+    <!-- VIEW PROFILE PANEL -->
     <aside class="view-profile-panel" id="viewProfilePanel" role="dialog" aria-modal="true" aria-label="User Profile">
-
-        <!-- Close button -->
         <button class="vp-close-btn" id="vpCloseBtn" title="Close Profile" aria-label="Close">
             <i class="ri-close-line"></i>
         </button>
 
-        <!-- ─── SKELETON LOADER ─────────────────────────────────────────── -->
         <div class="vp-skeleton" id="vpSkeleton">
-            <!-- hero skeleton -->
             <div class="vp-skeleton-hero">
                 <div class="vp-skeleton-avatar"></div>
                 <div class="vp-skeleton-block" style="width:120px;height:18px;margin:14px auto 6px;"></div>
                 <div class="vp-skeleton-block" style="width:80px;height:13px;margin:0 auto 10px;"></div>
                 <div class="vp-skeleton-block" style="width:70px;height:24px;margin:0 auto;border-radius:20px;"></div>
             </div>
-            <!-- action buttons skeleton -->
             <div class="vp-skeleton-actions">
                 <div class="vp-skeleton-circle"></div>
                 <div class="vp-skeleton-circle"></div>
                 <div class="vp-skeleton-circle"></div>
                 <div class="vp-skeleton-circle"></div>
             </div>
-            <!-- rows skeleton -->
             <div class="vp-skeleton-rows">
                 <div class="vp-skeleton-row"></div>
                 <div class="vp-skeleton-row" style="width:75%;"></div>
@@ -487,10 +559,7 @@
             </div>
         </div>
 
-        <!-- ─── ACTUAL CONTENT (hidden until loaded) ────────────────────── -->
         <div class="vp-content hidden" id="vpContent">
-
-            <!-- Hero card -->
             <div class="vp-hero">
                 <div class="vp-avatar-ring">
                     <div class="vp-avatar" id="vpAvatar"></div>
@@ -503,7 +572,6 @@
                 </div>
             </div>
 
-            <!-- Action buttons -->
             <div class="vp-actions">
                 <button class="vp-act-btn" id="vpMsgBtn" title="Send Message">
                     <div class="vp-act-icon"><i class="ri-message-3-line"></i></div>
@@ -526,16 +594,13 @@
                 </button>
             </div>
 
-            <!-- About / Bio -->
             <div class="vp-section">
                 <div class="vp-section-label"><i class="ri-information-line"></i> About</div>
                 <div class="vp-about" id="vpAbout">Hey there! I'm using NexTalk</div>
             </div>
 
-            <!-- Contact Info -->
             <div class="vp-section">
                 <div class="vp-section-label"><i class="ri-contacts-line"></i> Contact Info</div>
-
                 <div class="vp-info-row">
                     <div class="vp-info-icon"><i class="ri-mail-line"></i></div>
                     <div class="vp-info-body">
@@ -543,7 +608,6 @@
                         <span class="vp-info-value" id="vpEmail">—</span>
                     </div>
                 </div>
-
                 <div class="vp-info-row">
                     <div class="vp-info-icon"><i class="ri-phone-line"></i></div>
                     <div class="vp-info-body">
@@ -551,7 +615,6 @@
                         <span class="vp-info-value" id="vpPhone">—</span>
                     </div>
                 </div>
-
                 <div class="vp-info-row">
                     <div class="vp-info-icon"><i class="ri-calendar-check-line"></i></div>
                     <div class="vp-info-body">
@@ -561,10 +624,8 @@
                 </div>
             </div>
 
-            <!-- Profile Details -->
             <div class="vp-section">
                 <div class="vp-section-label"><i class="ri-user-3-line"></i> Profile Details</div>
-
                 <div class="vp-info-row">
                     <div class="vp-info-icon"><i class="ri-cake-line"></i></div>
                     <div class="vp-info-body">
@@ -572,7 +633,6 @@
                         <span class="vp-info-value" id="vpDob">—</span>
                     </div>
                 </div>
-
                 <div class="vp-info-row">
                     <div class="vp-info-icon"><i class="ri-user-3-line"></i></div>
                     <div class="vp-info-body">
@@ -580,7 +640,6 @@
                         <span class="vp-info-value" id="vpGender">—</span>
                     </div>
                 </div>
-
                 <div class="vp-info-row">
                     <div class="vp-info-icon"><i class="ri-map-pin-line"></i></div>
                     <div class="vp-info-body">
@@ -588,7 +647,6 @@
                         <span class="vp-info-value" id="vpLocation">—</span>
                     </div>
                 </div>
-
                 <div class="vp-info-row" style="align-items:flex-start;">
                     <div class="vp-info-icon" style="margin-top:2px;"><i class="ri-heart-line"></i></div>
                     <div class="vp-info-body">
@@ -598,7 +656,6 @@
                 </div>
             </div>
 
-            <!-- Shared Media -->
             <div class="vp-section">
                 <div class="vp-section-header">
                     <div class="vp-section-label"><i class="ri-image-line"></i> Shared Media</div>
@@ -612,7 +669,6 @@
                 </div>
             </div>
 
-            <!-- Bottom actions -->
             <div class="vp-bottom-actions">
                 <button class="vp-danger-btn" id="vpBlockBtn">
                     <i class="ri-forbid-line"></i> Block User
@@ -622,13 +678,10 @@
                     <i class="ri-flag-line"></i> Report
                 </button>
             </div>
-
-        </div><!-- /vp-content -->
+        </div>
     </aside>
 
-    <!-- View Profile overlay (click to close) -->
     <div class="view-profile-overlay" id="viewProfileOverlay"></div>
-
 
     <!-- NEW CHAT MODAL -->
     <div class="modal-overlay hidden" id="newChatModal">
@@ -808,6 +861,7 @@
     <div id="toastContainer"></div>
 
     <script type="module" src="../javascript/chatdashboard.js"></script>
+    <script type="module" src="../javascript/events.js"></script>
 </body>
 
 </html>
