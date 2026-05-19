@@ -379,13 +379,8 @@ const recTimeEl    = $("recTime");
 // UNREAD BADGE SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Load per-room "last seen" timestamps from localStorage.
- * Key: `nt_seen_<uid>_<roomId>` → ISO string
- */
 function loadLastSeenTs(uid) {
   lastSeenTs.clear();
-  // We read lazily when needed; no bulk load required.
 }
 
 function saveLastSeenTs(roomId, ts) {
@@ -402,27 +397,18 @@ function getLastSeenTs(roomId) {
   return ts;
 }
 
-/**
- * Mark a room as fully read — saves current time as last-seen and clears badge.
- */
 function markRoomRead(roomId) {
   saveLastSeenTs(roomId, new Date());
   unreadCounts.set(roomId, 0);
   updateTotalUnreadBadge();
 }
 
-/**
- * Increment unread count for a room that is NOT currently open.
- */
 function incrementUnread(roomId) {
   const current = unreadCounts.get(roomId) || 0;
   unreadCounts.set(roomId, current + 1);
   updateTotalUnreadBadge();
 }
 
-/**
- * Re-render the sidebar total-unread badge.
- */
 function updateTotalUnreadBadge() {
   if (!totalUnreadBadge) return;
   let total = 0;
@@ -436,10 +422,6 @@ function updateTotalUnreadBadge() {
   }
 }
 
-/**
- * Count unread messages in a room since last-seen timestamp.
- * Runs once when we first learn about a room so badges appear on app load.
- */
 async function countUnreadForRoom(roomId) {
   if (!ME) return 0;
   const seen = getLastSeenTs(roomId);
@@ -488,7 +470,6 @@ function upsertPresenceUser(uid, fields) {
 }
 
 function removePresenceUser(uid) { presenceUsersMap.delete(uid); }
-
 function getAllPresenceUsers() { return Array.from(presenceUsersMap.values()); }
 
 // ─── DM rooms map helpers ─────────────────────────────────────────────────────
@@ -519,7 +500,6 @@ function upsertDmRoom(otherUid, fields) {
 }
 
 function removeDmRoom(otherUid) { existingDmRooms.delete(otherUid); }
-
 function allDmRooms() { return Array.from(existingDmRooms.values()); }
 
 // ─── Info panel reset ─────────────────────────────────────────────────────────
@@ -693,6 +673,10 @@ async function syncProfileToFirestore() {
 // ═══════════════════════════════════════════════════════════════════════════════
 async function init() {
   buildAvatarEl(sidebarAvatar, ME.name, ME.avatar);
+
+  // ── FIX 1: Mobile sidebar — show name next to avatar ──────────────────────
+  updateSidebarAvatarInfo();
+
   renderOwnProfileInInfoPanel();
   await setPresenceOnline();
   syncProfileToFirestore().catch(console.warn);
@@ -713,6 +697,261 @@ async function init() {
   initAboutEditButton();
   initMicButton();
   initIpBlockBtn();
+
+  // ── FIX 2: Click own avatar in sidebar → open own profile panel ───────────
+  initSidebarAvatarClick();
+
+  // ── FIX 3: Right panel avatar hover edit overlay ──────────────────────────
+  initIpAvatarEdit();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX 1 — SIDEBAR MOBILE: show name & email next to avatar
+// ═══════════════════════════════════════════════════════════════════════════════
+function updateSidebarAvatarInfo() {
+  if (!ME || !avatarWrap) return;
+
+  // Inject name & email elements if not already there
+  let nameEl  = avatarWrap.querySelector(".avatar-name");
+  let emailEl = avatarWrap.querySelector(".avatar-email");
+  let infoDiv = avatarWrap.querySelector(".avatar-user-info");
+
+  if (!infoDiv) {
+    infoDiv = document.createElement("div");
+    infoDiv.className = "avatar-user-info";
+
+    nameEl = document.createElement("span");
+    nameEl.className = "avatar-name";
+
+    emailEl = document.createElement("span");
+    emailEl.className = "avatar-email";
+
+    infoDiv.appendChild(nameEl);
+    infoDiv.appendChild(emailEl);
+
+    // Insert after sidebarAvatar element
+    const avEl = avatarWrap.querySelector(".sidebar-avatar");
+    if (avEl && avEl.nextSibling) {
+      avatarWrap.insertBefore(infoDiv, avEl.nextSibling);
+    } else {
+      avatarWrap.appendChild(infoDiv);
+    }
+  }
+
+  nameEl.textContent  = ME.name  || "User";
+  emailEl.textContent = ME.email || "";
+
+  // Also add chevron icon if not present
+  if (!avatarWrap.querySelector(".avatar-chevron")) {
+    const chevron = document.createElement("i");
+    chevron.className = "ri-arrow-up-s-line avatar-chevron";
+    avatarWrap.appendChild(chevron);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX 2 — SIDEBAR AVATAR CLICK → open own profile in view-profile panel
+// ═══════════════════════════════════════════════════════════════════════════════
+function initSidebarAvatarClick() {
+  if (!avatarWrap) return;
+
+  avatarWrap.style.cursor = "pointer";
+  avatarWrap.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openOwnProfilePanel();
+    closeSidebar();
+  });
+}
+
+function openOwnProfilePanel() {
+  if (!ME) return;
+
+  // Mark as own profile view
+  currentViewedUid = ME.uid;
+
+  // Show skeleton first
+  showViewProfileSkeleton();
+  viewProfilePanel?.classList.add("open");
+  viewProfileOverlay?.classList.add("active");
+  if (window.innerWidth <= 768) document.body.style.overflow = "hidden";
+
+  // Render own data
+  renderOwnProfileInVpPanel();
+}
+
+function renderOwnProfileInVpPanel() {
+  if (!ME) return;
+  hideViewProfileSkeleton();
+
+  // Avatar
+  if (vpAvatar) {
+    vpAvatar.style.background = colorFor(ME.name);
+    vpAvatar.innerHTML = ME.avatar
+      ? `<img src="${escHtml(ME.avatar)}" alt="${escHtml(ME.name)}" />`
+      : `<span>${(ME.name || "?").charAt(0).toUpperCase()}</span>`;
+  }
+
+  if (vpName)     vpName.textContent     = ME.name || "—";
+  if (vpUsername) vpUsername.textContent = `@${(ME.name || "").toLowerCase().replace(/\s+/g, "")}`;
+
+  // Online badge — own profile is always online
+  if (vpOnlineBadge) {
+    vpOnlineBadge.className = "vp-online-badge online";
+    if (vpOnlineLabel) vpOnlineLabel.textContent = "Online (You)";
+  }
+
+  if (vpAbout) vpAbout.textContent = ME.status || "Hey there! I'm using NexTalk";
+
+  setVpText(vpEmail,  ME.email  || "—");
+  setVpText(vpPhone,  ME.phone  || "—");
+  setVpText(vpDob,    ME.dob    ? formatDob(ME.dob) : "—");
+
+  if (vpGender) {
+    vpGender.innerHTML = (ME.gender && ME.gender !== "Not specified")
+      ? `${genderIcon(ME.gender)} <span style="font-size:13px;color:var(--text);margin-left:4px;">${escHtml(ME.gender)}</span>`
+      : "—";
+    if (!ME.gender || ME.gender === "Not specified") vpGender.style.color = "var(--text-grey)";
+  }
+
+  if (vpLocation) {
+    const display = ME.location?.display || "";
+    vpLocation.innerHTML = display
+      ? `<span class="ip-location-chip"><i class="ri-map-pin-2-fill" style="color:var(--primary);margin-right:4px;"></i>${escHtml(display)}</span>`
+      : "—";
+    if (!display) vpLocation.style.color = "var(--text-grey)";
+  }
+
+  if (vpInterests) {
+    vpInterests.innerHTML = "";
+    if (ME.interests?.length) {
+      vpInterests.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
+      ME.interests.forEach(tag => {
+        const chip = document.createElement("span");
+        chip.className   = "vp-interest-chip";
+        chip.textContent = tag;
+        vpInterests.appendChild(chip);
+      });
+    } else {
+      vpInterests.innerHTML = `<span style="font-size:13px;color:var(--text-grey)">No interests added</span>`;
+    }
+  }
+
+  if (vpJoined) {
+    const p = loadMyProfile(ME.uid);
+    vpJoined.textContent = p?.createdAt
+      ? new Date(p.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+      : "—";
+  }
+
+  // Hide message button & block button for own profile
+  const vpActions  = viewProfilePanel?.querySelector(".vp-actions");
+  const vpBottomActs = viewProfilePanel?.querySelector(".vp-bottom-actions");
+  if (vpActions)    vpActions.style.display = "none";
+  if (vpBottomActs) vpBottomActs.style.display = "none";
+
+  // No shared media for self
+  if (vpMediaGrid) {
+    vpMediaGrid.innerHTML = `<div class="vp-media-empty"><i class="ri-image-line"></i><span>No shared media</span></div>`;
+  }
+  if (vpMediaCount) vpMediaCount.textContent = "";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX 3 — INFO PANEL AVATAR HOVER EDIT OVERLAY
+// ═══════════════════════════════════════════════════════════════════════════════
+function initIpAvatarEdit() {
+  if (!ipAvatar) return;
+
+  // Wrap avatar in a relative container if not already
+  const ring = ipAvatar.closest(".ip-avatar-ring");
+  if (!ring) return;
+
+  // Inject edit overlay
+  if (!ring.querySelector(".ip-avatar-edit-overlay")) {
+    const overlay = document.createElement("div");
+    overlay.className = "ip-avatar-edit-overlay";
+    overlay.innerHTML = `<i class="ri-camera-line"></i><span>Change</span>`;
+    overlay.style.cssText = `
+      position:absolute;
+      inset:0;
+      border-radius:50%;
+      background:rgba(0,0,0,0.48);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:3px;
+      opacity:0;
+      transition:opacity .2s;
+      cursor:pointer;
+      z-index:2;
+      color:#fff;
+      font-size:11px;
+      font-weight:600;
+      font-family:'Work Sans',sans-serif;
+    `;
+    overlay.querySelector("i").style.cssText = "font-size:22px;line-height:1;";
+
+    ring.style.position = "relative";
+    ring.style.cursor   = "pointer";
+    ring.appendChild(overlay);
+
+    // Show/hide on hover
+    ring.addEventListener("mouseenter", () => { overlay.style.opacity = "1"; });
+    ring.addEventListener("mouseleave", () => { overlay.style.opacity = "0"; });
+
+    // Hidden file input for avatar upload
+    const fileInput = document.createElement("input");
+    fileInput.type   = "file";
+    fileInput.accept = "image/*";
+    fileInput.style.display = "none";
+    fileInput.id = "ipAvatarFileInput";
+    document.body.appendChild(fileInput);
+
+    overlay.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files[0];
+      if (!file || !ME) return;
+      if (file.size > 5 * 1024 * 1024) { showToast("Image too large. Max 5 MB.", "warning"); return; }
+
+      showToast("Uploading avatar…");
+      try {
+        const uniqueName = `avatar_${ME.uid}_${Date.now()}.${file.name.split(".").pop()}`;
+        const path       = `avatars/${ME.uid}/${uniqueName}`;
+        const ref        = storageRef(storage, path);
+        const snapshot   = await uploadBytes(ref, file);
+        const url        = await getDownloadURL(snapshot.ref);
+
+        // Update ME
+        ME.avatar = url;
+
+        // Update localStorage profile
+        const profile = loadMyProfile(ME.uid);
+        if (profile) {
+          profile.avatar = url;
+          localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
+        }
+
+        // Sync to Firestore + Presence
+        await Promise.all([
+          setDoc(doc(db, "users",    ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
+          setDoc(doc(db, "presence", ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
+        ]);
+
+        // Update all avatar elements on screen
+        buildAvatarEl(ipAvatar, ME.name, ME.avatar);
+        buildAvatarEl(sidebarAvatar, ME.name, ME.avatar);
+        renderOwnProfileInInfoPanel();
+        if (currentViewedUid === ME.uid) renderOwnProfileInVpPanel();
+
+        showToast("Avatar updated ✓");
+      } catch (err) {
+        showToast("Upload failed: " + err.message, "error");
+      }
+      fileInput.value = "";
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -997,7 +1236,6 @@ async function loadExistingDmRooms() {
 
       upsertDmRoom(otherUid, { roomId, name: otherUid, avatar: "", status: "", online: false, lastText, lastTs });
 
-      // Count unread for this room
       countUnreadForRoom(roomId).then(count => {
         if (count > 0) {
           unreadCounts.set(roomId, count);
@@ -1007,7 +1245,6 @@ async function loadExistingDmRooms() {
       });
     }
 
-    // Also count unread for general
     countUnreadForRoom(ROOM_GENERAL).then(count => {
       if (count > 0) {
         unreadCounts.set(ROOM_GENERAL, count);
@@ -1108,7 +1345,6 @@ async function saveAboutStatus(newStatus) {
   showToast("Status updated ✓");
 }
 
-// small helper — reusable icon button
 function makeIconBtn(iconClass, title, color) {
   const btn = document.createElement("button");
   btn.className = "icon-btn";
@@ -1140,7 +1376,6 @@ function renderOwnProfileInInfoPanel() {
   })();
   if (ipJoined) ipJoined.textContent = joinedDate;
 
-  // Editable fields
   if (ipEmail) renderEditableField(ipEmail, ME.email || "—", "email", async () => {
     showToast("Email cannot be changed here.", "warning");
   }, true);
@@ -1165,6 +1400,9 @@ function renderOwnProfileInInfoPanel() {
 
   ipExtraSection?.classList.remove("hidden");
   ipGroupMembersSection?.classList.add("hidden");
+
+  // Re-attach avatar edit overlay after re-render
+  setTimeout(() => initIpAvatarEdit(), 50);
 }
 
 function renderLocationField(el, location) {
@@ -1299,7 +1537,6 @@ function listenPresence() {
         online, lastSeen: data.updatedAt || data.lastSeen || null,
       });
 
-      // Sync own status changes
       if (uid === ME?.uid && data.status && data.status !== ME.status) {
         ME.status = data.status;
         if (ipAbout && !ipAbout.parentElement?.querySelector(".about-edit-wrap"))
@@ -1312,7 +1549,6 @@ function listenPresence() {
 
     renderOnlineStrip(onlineUsers);
 
-    // Sync DM room presence data
     allUsers.forEach(u => {
       if (u.uid !== ME?.uid && existingDmRooms.has(u.uid))
         upsertDmRoom(u.uid, { name: u.name, avatar: u.avatar, status: u.status, online: u.online });
@@ -1320,7 +1556,6 @@ function listenPresence() {
 
     renderAllUsersPanel(allUsers);
 
-    // Update chat header if open
     if (activeRoomId && activeRoomId !== ROOM_GENERAL && !activeRoomMeta.isGroup) {
       const other = allUsers.find(u => u.uid !== ME?.uid && getRoomId(ME.uid, u.uid) === activeRoomId);
       if (other) updateChatHeaderPresence(other);
@@ -1328,8 +1563,8 @@ function listenPresence() {
 
     renderContactsList();
 
-    // Update view profile panel badge if open
     if (currentViewedUid && vpOnlineBadge) {
+      if (currentViewedUid === ME?.uid) return; // own profile stays "Online"
       const viewed = presenceUsersMap.get(currentViewedUid);
       if (viewed) {
         vpOnlineBadge.className = `vp-online-badge ${viewed.online ? "online" : "offline"}`;
@@ -1358,7 +1593,7 @@ function initViewProfilePanel() {
   });
 
   vpMsgBtn?.addEventListener("click", () => {
-    if (!currentViewedUid || !ME) return;
+    if (!currentViewedUid || !ME || currentViewedUid === ME.uid) return;
     const user   = presenceUsersMap.get(currentViewedUid) || { uid: currentViewedUid, name: currentViewedUid, avatar: "", online: false, status: "" };
     const roomId = getRoomId(ME.uid, currentViewedUid);
     closeViewProfile();
@@ -1366,7 +1601,7 @@ function initViewProfilePanel() {
   });
 
   document.getElementById("vpBlockBtn")?.addEventListener("click", async () => {
-    if (!currentViewedUid) return;
+    if (!currentViewedUid || currentViewedUid === ME?.uid) return;
     const name = vpName?.textContent || "User";
     const btn  = document.getElementById("vpBlockBtn");
     if (blockedUsers.has(currentViewedUid)) {
@@ -1393,6 +1628,12 @@ async function openViewProfile(uid) {
     await loadViewProfileData(uid);
   }
 
+  // Restore actions that may have been hidden for own profile
+  const vpActions    = viewProfilePanel?.querySelector(".vp-actions");
+  const vpBottomActs = viewProfilePanel?.querySelector(".vp-bottom-actions");
+  if (vpActions)    vpActions.style.display = "";
+  if (vpBottomActs) vpBottomActs.style.display = "";
+
   const vpBlockBtn = document.getElementById("vpBlockBtn");
   if (vpBlockBtn) {
     const blocked = blockedUsers.has(uid);
@@ -1414,6 +1655,12 @@ function closeViewProfile() {
   viewProfileUnsub?.();       viewProfileUnsub      = null;
   viewProfileMediaUnsub?.();  viewProfileMediaUnsub = null;
   currentViewedUid = null;
+
+  // Restore hidden elements
+  const vpActions    = viewProfilePanel?.querySelector(".vp-actions");
+  const vpBottomActs = viewProfilePanel?.querySelector(".vp-bottom-actions");
+  if (vpActions)    vpActions.style.display = "";
+  if (vpBottomActs) vpBottomActs.style.display = "";
 }
 
 function showViewProfileSkeleton() {
@@ -1876,7 +2123,6 @@ function renderContactsList() {
   if (!pinnedList) return;
   pinnedList.innerHTML = "";
 
-  // General Chat (always pinned)
   const generalUnread = unreadCounts.get(ROOM_GENERAL) || 0;
   const generalLi     = document.createElement("li");
   generalLi.innerHTML = buildChatItemHtml({
@@ -1894,7 +2140,6 @@ function renderContactsList() {
     });
   }
 
-  // Pinned DM contacts
   getAllPresenceUsers()
     .filter(u => u.uid !== ME?.uid && pinnedChats.has(u.uid))
     .forEach(u => {
@@ -1976,7 +2221,6 @@ function renderOnlineStrip(users) {
 function renderAllUsersPanel(presenceUsers) {
   const others = presenceUsers.filter(u => u.uid !== ME?.uid);
 
-  // Merge presence + existing DM rooms into one map
   const usersMap = new Map();
   others.forEach(u => usersMap.set(u.uid, { uid: u.uid, name: u.name, avatar: u.avatar, status: u.status, online: u.online }));
   allDmRooms().forEach(r => {
@@ -1992,7 +2236,6 @@ function renderAllUsersPanel(presenceUsers) {
     return;
   }
 
-  // Sort: online first, then by last message time
   allUsers.sort((a, b) => {
     if (a.online !== b.online) return a.online ? -1 : 1;
     const aTs = getDmRoom(a.uid)?.lastTs?.getTime() || 0;
@@ -2075,12 +2318,10 @@ function openRoom(roomId, name, avatar, isPublic, targetUser = null, isGroup = f
 
   mdViewProfile?.classList.toggle("hidden", isPublic || isGroup);
 
-  // Mark as read when opening
   markRoomRead(roomId);
   renderContactsList();
   renderAllUsersPanel(getAllPresenceUsers());
 
-  // Teardown old listeners
   msgUnsub?.();
   typingUnsub?.();
   messagesArea.innerHTML = "";
@@ -2255,8 +2496,6 @@ function listenMessages(roomId) {
         renderMessage(data, change.doc.id);
         updateDmRoomPreview(roomId, data);
 
-        // Unread: count messages from others that arrive while we have this room open
-        // (shouldn't happen as we just opened it, but guard for real-time arrivals)
         if (data.uid !== ME?.uid && data.uid !== "system" && !data.deleted) {
           const isActiveRoom = activeRoomId === roomId && document.hasFocus();
           if (!isActiveRoom) {
@@ -2297,7 +2536,6 @@ function renderMessage(data, id) {
   const timeStr = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const dateStr = ts.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
-  // Date divider
   if (dateStr !== lastRenderDate) {
     lastRenderDate = dateStr;
     const div = document.createElement("div");
@@ -2306,7 +2544,6 @@ function renderMessage(data, id) {
     messagesArea.appendChild(div);
   }
 
-  // Sticker (no bubble wrapper)
   if (data.type === "sticker") {
     const row   = document.createElement("div");
     row.className = `msg-row ${isMine ? "sent" : "received"}`;
@@ -2320,7 +2557,6 @@ function renderMessage(data, id) {
     return;
   }
 
-  // Regular message row
   const row   = document.createElement("div");
   row.className = `msg-row ${isMine ? "sent" : "received"}`;
   row.dataset.id = id;
@@ -2407,12 +2643,10 @@ function buildBubbleContent(data, timeStr, isMine) {
       <div class="msg-meta">${timeStr}${check}</div>`;
   }
 
-  // Plain text
   return `${escHtml(data.text)}${editedLabel}<div class="msg-meta">${timeStr}${check}</div>`;
 }
 
 function bindMsgActions(row, data, id) {
-  // Voice player
   const playBtn = row.querySelector(".voice-play-btn");
   if (playBtn) {
     let audio   = null;
@@ -2436,7 +2670,6 @@ function bindMsgActions(row, data, id) {
     });
   }
 
-  // Edit / delete buttons
   row.querySelectorAll(".msg-act-btn").forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
