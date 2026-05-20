@@ -1,4 +1,16 @@
 // chatdashboard.js
+// ✅ AVATAR FIXES:
+//   1. buildAvatarEl now accepts a forceRefresh flag to bust image cache
+//   2. refreshAllProfileImages() surgically updates every avatar node without
+//      triggering full re-renders that overwrite the DOM before paint
+//   3. listenOwnPresence() uses onSnapshot on own presence doc for real-time sync
+//   4. initIpAvatarEdit() calls refreshAllProfileImages() after upload instead of
+//      relying on renderOwnProfileInInfoPanel() which wipes avatars
+//   5. updateSidebarAvatarInfo() and renderOwnProfileInInfoPanel() no longer
+//      touch the .sidebar-avatar img src / innerHTML — they defer to refreshAllProfileImages()
+//   6. Presence listener skips calling refreshAllProfileImages() if avatarUrl
+//      already matches ME.avatar to avoid redundant re-renders
+//   7. All avatar img elements get a ?cb=timestamp cache-buster on src
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -21,109 +33,97 @@ const fbApp = initializeApp({
   messagingSenderId: "730298460453",
   appId: "1:730298460453:web:c69d16bd96e14876a4d2cc",
 });
-const auth    = getAuth(fbApp);
-const db      = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
 const storage = getStorage(fbApp);
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const ROOM_GENERAL           = "general";
-const ONLINE_THRESHOLD_SEC   = 90;
-const HEARTBEAT_INTERVAL_MS  = 30_000;
-const COLORS = ["#008080","#0e9f6e","#0ea5e9","#7c3aed","#db2777","#ea580c","#0891b2"];
+const ROOM_GENERAL = "general";
+const ONLINE_THRESHOLD_SEC = 90;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const COLORS = ["#008080", "#0e9f6e", "#0ea5e9", "#7c3aed", "#db2777", "#ea580c", "#0891b2"];
 
 const EMOJIS = [
-  "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍",
-  "🤩","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫",
-  "🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤",
-  "😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸",
-  "😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨",
-  "😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠",
-  "🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖","😺","😸",
-  "😹","😻","😼","😽","🙀","😿","😾","👋","🤚","🖐","✋","🖖","👌","🤌","🤏",
-  "✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","👍","👎","✊","👊","🤛",
-  "🤜","👏","🙌","🫶","👐","🤲","🤝","🙏","💪","❤️","🧡","💛","💚","💙","💜",
-  "🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️",
-  "☯️","🔥","⚡","🌈","⭐","🌟","💫","✨","🎉","🎊","🎈",
+  "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍",
+  "🤩", "😘", "😗", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫",
+  "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥", "😌", "😔", "😪", "🤤",
+  "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "🥸",
+  "😎", "🤓", "🧐", "😕", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨",
+  "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠",
+  "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡", "👹", "👺", "👻", "👽", "👾", "🤖", "😺", "😸",
+  "😹", "😻", "😼", "😽", "🙀", "😿", "😾", "👋", "🤚", "🖐", "✋", "🖖", "👌", "🤌", "🤏",
+  "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛",
+  "🤜", "👏", "🙌", "🫶", "👐", "🤲", "🤝", "🙏", "💪", "❤️", "🧡", "💛", "💚", "💙", "💜",
+  "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "☮️", "✝️",
+  "☯️", "🔥", "⚡", "🌈", "⭐", "🌟", "💫", "✨", "🎉", "🎊", "🎈",
 ];
 
 const STICKERS = [
-  "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵",
-  "🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄",
-  "🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷","🦂","🐢","🐍","🦎","🦖","🦕",
-  "🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆",
-  "🦓","🦍","🦧","🦣","🌸","🌺","🌻","🌹","🌷","🌼","💐","🍀","🌿","🌱","🌲",
-  "🌳","🌴","🍁","🍂","🍃","🍎","🍊","🍋","🍇","🍓","🫐","🍈","🍑","🍒","🥝",
-  "🍅","🥥","🥦","🌽","🍕","🍔","🌮","🍜","🍣","🍩","🎂","🍦","☕","🧋","🍺",
-  "🎮","⚽","🏀","🎸","🎵","🎨","🚀",
+  "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵",
+  "🙈", "🙉", "🙊", "🐔", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄",
+  "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷", "🦂", "🐢", "🐍", "🦎", "🦖", "🦕",
+  "🐙", "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆",
+  "🦓", "🦍", "🦧", "🦣", "🌸", "🌺", "🌻", "🌹", "🌷", "🌼", "💐", "🍀", "🌿", "🌱", "🌲",
+  "🌳", "🌴", "🍁", "🍂", "🍃", "🍎", "🍊", "🍋", "🍇", "🍓", "🫐", "🍈", "🍑", "🍒", "🥝",
+  "🍅", "🥥", "🥦", "🌽", "🍕", "🍔", "🌮", "🍜", "🍣", "🍩", "🎂", "🍦", "☕", "🧋", "🍺",
+  "🎮", "⚽", "🏀", "🎸", "🎵", "🎨", "🚀",
 ];
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let ME = null;
 
-/** Map<otherUid → roomData> — one DM room per peer */
 let existingDmRooms = new Map();
-
-/** Map<uid → presenceData> */
 let presenceUsersMap = new Map();
 
-let activeRoomId   = null;
+let activeRoomId = null;
 let activeRoomMeta = { name: "", isPublic: false, isGroup: false, groupData: null };
 
-// Unread tracking: Map<roomId → unreadCount>
-let unreadCounts   = new Map();
-// Timestamp of last message we've "seen" per room: Map<roomId → timestamp>
-let lastSeenTs     = new Map();
+let unreadCounts = new Map();
+let lastSeenTs = new Map();
 
-let msgUnsub       = null;
-let typingUnsub    = null;
-let presenceUnsub  = null;
-let groupsUnsub    = null;
+let msgUnsub = null;
+let typingUnsub = null;
+let presenceUnsub = null;
+let groupsUnsub = null;
+let ownPresenceUnsub = null;
 
-let typingTimer    = null;
+let typingTimer = null;
 let lastTypingSent = 0;
 let currentEmojiTab = "emoji";
-let pinnedChats    = new Set();
+let pinnedChats = new Set();
 let moreDropdownOpen = false;
-let selectMode     = false;
+let selectMode = false;
 let selectedMsgIds = new Set();
 let favouriteChats = new Set();
 
-// Group creation
 let groupSelectedMembers = new Map();
-let selectedGroupIcon    = "💬";
+let selectedGroupIcon = "💬";
 
-// In-chat search
-let searchMatches    = [];
+let searchMatches = [];
 let searchCurrentIdx = -1;
 
-// Context menu / edit
-let ctxMsgId   = null;
+let ctxMsgId = null;
 let ctxMsgData = null;
 let editingMsgId = null;
 
-// View profile
-let viewProfileUnsub      = null;
+let viewProfileUnsub = null;
 let viewProfileMediaUnsub = null;
-let currentViewedUid      = null;
+let currentViewedUid = null;
 
-// Voice recording
-let _isRecording   = false;
-let _recInterval   = null;
-let _recSeconds    = 0;
+let _isRecording = false;
+let _recInterval = null;
+let _recSeconds = 0;
 let _mediaRecorder = null;
-let _audioChunks   = [];
-let _recStream     = null;
+let _audioChunks = [];
+let _recStream = null;
 
-// Presence heartbeat
 let _presenceHeartbeatTimer = null;
 
-// Block / unblock
-let blockedUsers   = new Set();
+let blockedUsers = new Set();
 let blockedByUsers = new Set();
-let blockUnsub     = null;
+let blockUnsub = null;
 let blockedByUnsub = null;
 
-// All groups
 let allGroups = [];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -137,27 +137,16 @@ function colorFor(str) {
 
 function escHtml(s) {
   return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function getRoomId(a, b) {
-  return [a, b].sort().join("__");
-}
-
-function loadMyProfile(uid) {
-  const raw = localStorage.getItem(`nextalk_profile_${uid}`);
-  return raw ? JSON.parse(raw) : null;
-}
-
-function getGeneralChatName() {
-  return localStorage.getItem("nt_general_name") || "General Chat";
-}
+function getRoomId(a, b) { return [a, b].sort().join("__"); }
+function loadMyProfile(uid) { const raw = localStorage.getItem(`nextalk_profile_${uid}`); return raw ? JSON.parse(raw) : null; }
+function getGeneralChatName() { return localStorage.getItem("nt_general_name") || "General Chat"; }
 
 function formatChatTime(date) {
   if (!date) return "";
-  const now  = new Date();
+  const now = new Date();
   const diff = now - date;
   if (diff < 86_400_000 && now.getDate() === date.getDate())
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -167,21 +156,20 @@ function formatChatTime(date) {
 
 function formatDob(dobStr) {
   if (!dobStr) return "—";
-  try {
-    return new Date(dobStr).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  } catch { return dobStr; }
+  try { return new Date(dobStr).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }); }
+  catch { return dobStr; }
 }
 
 function genderIcon(gender) {
-  if (gender === "Male")   return `<i class="ri-men-line" style="color:var(--primary)"></i>`;
-  if (gender === "Female") return `<i class="ri-women-line" style="color:#db2777"></i>`;
+  if (gender === "Male") return `<i class="ri-men-line"      style="color:var(--primary)"></i>`;
+  if (gender === "Female") return `<i class="ri-women-line"    style="color:#db2777"></i>`;
   return `<i class="ri-question-line" style="color:var(--text-grey)"></i>`;
 }
 
 function formatFileSize(bytes) {
   if (!bytes) return "";
-  if (bytes < 1024)           return bytes + " B";
-  if (bytes < 1024 * 1024)    return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
@@ -198,190 +186,295 @@ function getFileIcon(filename) {
   return map[ext] || "ri-file-line";
 }
 
-function buildAvatarEl(el, name, avatarUrl) {
+// ─── Cache-busting helper ────────────────────────────────────────────────────
+// Appends ?cb=<timestamp> so browsers don't serve the old avatar from cache.
+function bustCache(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.set("cb", Date.now());
+    return u.toString();
+  } catch {
+    // url might be a relative or data: url — return as-is
+    return url;
+  }
+}
+
+// ─── Core avatar render ───────────────────────────────────────────────────────
+// Sets background + either an <img> or a text initial inside `el`.
+// Pass bust=true when you want to force-refresh a cached image.
+function buildAvatarEl(el, name, avatarUrl, bust = false) {
+  if (!el) return;
   el.style.background = colorFor(name || "?");
-  el.innerHTML = avatarUrl
-    ? `<img src="${avatarUrl}" alt="${escHtml(name)}" />`
-    : (name || "?").charAt(0).toUpperCase();
+  const src = (bust && avatarUrl) ? bustCache(avatarUrl) : (avatarUrl || "");
+  if (src) {
+    // Reuse existing <img> if present — just swap src (avoids flicker)
+    let img = el.querySelector("img");
+    if (!img) {
+      el.innerHTML = "";
+      img = document.createElement("img");
+      img.alt = escHtml(name || "");
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;";
+      el.appendChild(img);
+    }
+    img.src = src;
+  } else {
+    el.innerHTML = (name || "?").charAt(0).toUpperCase();
+  }
 }
 
 function scrollBottom() {
-  requestAnimationFrame(() => {
-    if (messagesArea) messagesArea.scrollTop = messagesArea.scrollHeight;
-  });
+  requestAnimationFrame(() => { if (messagesArea) messagesArea.scrollTop = messagesArea.scrollHeight; });
 }
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
-const sidebarAvatar      = $("sidebarAvatar");
-const totalUnreadBadge   = $("totalUnread");
-const onlineStrip        = $("onlineStrip");
-const pinnedList         = $("pinnedList");
-const allChatList        = $("allChatList");
-const chatEmpty          = $("chatEmpty");
-const chatView           = $("chatView");
-const chAvatar           = $("chAvatar");
-const chPresence         = $("chPresence");
-const chName             = $("chName");
-const chStatus           = $("chStatus");
-const messagesArea       = $("messagesArea");
-const typingRow          = $("typingRow");
-const typingAv           = $("typingAv");
-const msgInput           = $("msgInput");
-const sendBtn            = $("sendBtn");
+const sidebarAvatar = $("sidebarAvatar");
+const totalUnreadBadge = $("totalUnread");
+const onlineStrip = $("onlineStrip");
+const pinnedList = $("pinnedList");
+const allChatList = $("allChatList");
+const chatEmpty = $("chatEmpty");
+const chatView = $("chatView");
+const chAvatar = $("chAvatar");
+const chPresence = $("chPresence");
+const chName = $("chName");
+const chStatus = $("chStatus");
+const messagesArea = $("messagesArea");
+const typingRow = $("typingRow");
+const typingAv = $("typingAv");
+const msgInput = $("msgInput");
+const sendBtn = $("sendBtn");
 
-const ipAvatar           = $("ipAvatar");
-const ipName             = $("ipName");
-const ipUsername         = $("ipUsername");
-const ipAbout            = $("ipAbout");
-const ipEmail            = $("ipEmail");
-const ipPhone            = $("ipPhone");
-const ipJoined           = $("ipJoined");
+const ipAvatar = $("ipAvatar");
+const ipName = $("ipName");
+const ipUsername = $("ipUsername");
+const ipAbout = $("ipAbout");
+const ipEmail = $("ipEmail");
+const ipPhone = $("ipPhone");
+const ipJoined = $("ipJoined");
 const ipGroupMembersSection = $("ipGroupMembersSection");
 const ipGroupMembersList = $("ipGroupMembersList");
-const ipDob              = $("ipDob");
-const ipGender           = $("ipGender");
-const ipInterests        = $("ipInterests");
-const ipExtraSection     = $("ipExtraSection");
-const ipLocation         = $("ipLocation");
-const ipAboutEditBtn     = $("ipAboutEditBtn");
+const ipDob = $("ipDob");
+const ipGender = $("ipGender");
+const ipInterests = $("ipInterests");
+const ipExtraSection = $("ipExtraSection");
+const ipLocation = $("ipLocation");
+const ipAboutEditBtn = $("ipAboutEditBtn");
 
-const toastContainer     = $("toastContainer");
-const themeToggleBtn     = $("themeToggleBtn");
-const themeIcon          = $("themeIcon");
-const themeLabelText     = $("themeLabelText");
-const avatarWrap         = $("avatarWrap");
-const pdLogout           = $("pdLogout");
-const attachBtn          = $("attachBtn");
-const attachMenu         = $("attachMenu");
-const imgFileInput       = $("imgFileInput");
-const docFileInput       = $("docFileInput");
-const anyFileInput       = $("anyFileInput");
-const emojiToggleBtn     = $("emojiToggleBtn");
-const emojiPanel         = $("emojiPanel");
-const emojiContent       = $("emojiContent");
-const searchInput        = $("searchInput");
-const searchClearBtn     = $("searchClearBtn");
-const searchResultsList  = $("searchResultsList");
-const normalChatLists    = $("normalChatLists");
-const chatSearchBtn      = $("chatSearchBtn");
-const chatSearchBar      = $("chatSearchBar");
-const chatSearchInput    = $("chatSearchInput");
-const chatSearchCount    = $("chatSearchCount");
-const chatSearchPrev     = $("chatSearchPrev");
-const chatSearchNext     = $("chatSearchNext");
-const chatSearchClose    = $("chatSearchClose");
-const newChatBtn         = $("newChatBtn");
-const newChatModal       = $("newChatModal");
-const newChatModalClose  = $("newChatModalClose");
-const newChatSearch      = $("newChatSearch");
-const newChatUserList    = $("newChatUserList");
-const msgCtxMenu         = $("msgCtxMenu");
-const ctxEdit            = $("ctxEdit");
-const ctxDelete          = $("ctxDelete");
-const editMsgModal       = $("editMsgModal");
-const editMsgClose       = $("editMsgClose");
-const editMsgCancel      = $("editMsgCancel");
-const editMsgSave        = $("editMsgSave");
-const editMsgInput       = $("editMsgInput");
-const moreMenuBtn        = $("moreMenuBtn");
-const moreDropdown       = $("moreDropdown");
-const mdViewProfile      = $("mdViewProfile");
-const mdSearch           = $("mdSearch");
-const mdSelectMsg        = $("mdSelectMsg");
-const mdPinChat          = $("mdPinChat");
-const mdEditNick         = $("mdEditNick");
-const mdRenameChat       = $("mdRenameChat");
-const mdClearChat        = $("mdClearChat");
-const mdDeleteChat       = $("mdDeleteChat");
-const mdBlock            = $("mdBlock");
-const mdAddFav           = $("mdAddFav");
-const editNickModal      = $("editNickModal");
+const toastContainer = $("toastContainer");
+const themeToggleBtn = $("themeToggleBtn");
+const themeIcon = $("themeIcon");
+const themeLabelText = $("themeLabelText");
+const avatarWrap = $("avatarWrap");
+const pdLogout = $("pdLogout");
+const attachBtn = $("attachBtn");
+const attachMenu = $("attachMenu");
+const imgFileInput = $("imgFileInput");
+const docFileInput = $("docFileInput");
+const anyFileInput = $("anyFileInput");
+const emojiToggleBtn = $("emojiToggleBtn");
+const emojiPanel = $("emojiPanel");
+const emojiContent = $("emojiContent");
+const searchInput = $("searchInput");
+const searchClearBtn = $("searchClearBtn");
+const searchResultsList = $("searchResultsList");
+const normalChatLists = $("normalChatLists");
+const chatSearchBtn = $("chatSearchBtn");
+const chatSearchBar = $("chatSearchBar");
+const chatSearchInput = $("chatSearchInput");
+const chatSearchCount = $("chatSearchCount");
+const chatSearchPrev = $("chatSearchPrev");
+const chatSearchNext = $("chatSearchNext");
+const chatSearchClose = $("chatSearchClose");
+const newChatBtn = $("newChatBtn");
+const newChatModal = $("newChatModal");
+const newChatModalClose = $("newChatModalClose");
+const newChatSearch = $("newChatSearch");
+const newChatUserList = $("newChatUserList");
+const msgCtxMenu = $("msgCtxMenu");
+const ctxEdit = $("ctxEdit");
+const ctxDelete = $("ctxDelete");
+const editMsgModal = $("editMsgModal");
+const editMsgClose = $("editMsgClose");
+const editMsgCancel = $("editMsgCancel");
+const editMsgSave = $("editMsgSave");
+const editMsgInput = $("editMsgInput");
+const moreMenuBtn = $("moreMenuBtn");
+const moreDropdown = $("moreDropdown");
+const mdViewProfile = $("mdViewProfile");
+const mdSearch = $("mdSearch");
+const mdSelectMsg = $("mdSelectMsg");
+const mdPinChat = $("mdPinChat");
+const mdEditNick = $("mdEditNick");
+const mdRenameChat = $("mdRenameChat");
+const mdClearChat = $("mdClearChat");
+const mdDeleteChat = $("mdDeleteChat");
+const mdBlock = $("mdBlock");
+const mdAddFav = $("mdAddFav");
+const editNickModal = $("editNickModal");
 const editNickModalTitle = $("editNickModalTitle");
-const editNickClose      = $("editNickClose");
-const editNickCancel     = $("editNickCancel");
-const editNickSave       = $("editNickSave");
-const editNickInput      = $("editNickInput");
-const selectBar          = $("selectBar");
-const selectCancel       = $("selectCancel");
-const selectCount        = $("selectCount");
-const selectDelete       = $("selectDelete");
-const selectForward      = $("selectForward");
-const groupSettingsBtn   = $("groupSettingsBtn");
+const editNickClose = $("editNickClose");
+const editNickCancel = $("editNickCancel");
+const editNickSave = $("editNickSave");
+const editNickInput = $("editNickInput");
+const selectBar = $("selectBar");
+const selectCancel = $("selectCancel");
+const selectCount = $("selectCount");
+const selectDelete = $("selectDelete");
+const selectForward = $("selectForward");
+const groupSettingsBtn = $("groupSettingsBtn");
 const groupSettingsModal = $("groupSettingsModal");
 const groupSettingsModalClose = $("groupSettingsModalClose");
-const groupSettingsCancel     = $("groupSettingsCancel");
-const groupSettingsSave       = $("groupSettingsSave");
-const gsGroupName        = $("gsGroupName");
+const groupSettingsCancel = $("groupSettingsCancel");
+const groupSettingsSave = $("groupSettingsSave");
+const gsGroupName = $("gsGroupName");
 const gsGroupMembersList = $("gsGroupMembersList");
-const gsAddMemberSearch  = $("gsAddMemberSearch");
-const gsAddMemberList    = $("gsAddMemberList");
-const gsDeleteGroup      = $("gsDeleteGroup");
+const gsAddMemberSearch = $("gsAddMemberSearch");
+const gsAddMemberList = $("gsAddMemberList");
+const gsDeleteGroup = $("gsDeleteGroup");
 
-const sidebar            = $("sidebar");
-const sidebarOverlay     = $("sidebarOverlay");
-const sidebarCloseBtn    = $("sidebarCloseBtn");
-const mobileMenuBtn      = $("mobileMenuBtn");
-const mobileNewChatBtn   = $("mobileNewChatBtn");
-const chatBackBtn        = $("chatBackBtn");
-const infoPanel          = $("infoPanel");
-const infoPanelOverlay   = $("infoPanelOverlay");
-const infoPanelCloseBtn  = $("infoPanelCloseBtn");
+const sidebar = $("sidebar");
+const sidebarOverlay = $("sidebarOverlay");
+const sidebarCloseBtn = $("sidebarCloseBtn");
+const mobileMenuBtn = $("mobileMenuBtn");
+const mobileNewChatBtn = $("mobileNewChatBtn");
+const chatBackBtn = $("chatBackBtn");
+const infoPanel = $("infoPanel");
+const infoPanelOverlay = $("infoPanelOverlay");
+const infoPanelCloseBtn = $("infoPanelCloseBtn");
 const infoPanelToggleBtn = $("infoPanelToggleBtn");
 
-const groupsNavItem      = $("groupsNavItem");
-const groupsPanel        = $("groupsPanel");
-const groupsPanelClose   = $("groupsPanelClose");
+const groupsNavItem = $("groupsNavItem");
+const groupsPanel = $("groupsPanel");
+const groupsPanelClose = $("groupsPanelClose");
 const groupsPanelOverlay = $("groupsPanelOverlay");
-const groupsList         = $("groupsList");
-const createGroupBtn     = $("createGroupBtn");
-const createGroupModal   = $("createGroupModal");
+const groupsList = $("groupsList");
+const createGroupBtn = $("createGroupBtn");
+const createGroupModal = $("createGroupModal");
 const createGroupModalClose = $("createGroupModalClose");
-const createGroupCancel  = $("createGroupCancel");
-const createGroupSave    = $("createGroupSave");
-const groupNameInput     = $("groupNameInput");
-const groupDescInput     = $("groupDescInput");
-const groupIconPicker    = $("groupIconPicker");
-const groupMemberSearch  = $("groupMemberSearch");
-const groupMemberList    = $("groupMemberList");
+const createGroupCancel = $("createGroupCancel");
+const createGroupSave = $("createGroupSave");
+const groupNameInput = $("groupNameInput");
+const groupDescInput = $("groupDescInput");
+const groupIconPicker = $("groupIconPicker");
+const groupMemberSearch = $("groupMemberSearch");
+const groupMemberList = $("groupMemberList");
 const selectedMembersWrap = $("selectedMembersWrap");
 
-// View Profile panel
-const viewProfilePanel   = $("viewProfilePanel");
+const viewProfilePanel = $("viewProfilePanel");
 const viewProfileOverlay = $("viewProfileOverlay");
-const vpCloseBtn         = $("vpCloseBtn");
-const vpAvatar           = $("vpAvatar");
-const vpName             = $("vpName");
-const vpUsername         = $("vpUsername");
-const vpOnlineBadge      = $("vpOnlineBadge");
-const vpOnlineLabel      = $("vpOnlineLabel");
-const vpAbout            = $("vpAbout");
-const vpEmail            = $("vpEmail");
-const vpPhone            = $("vpPhone");
-const vpJoined           = $("vpJoined");
-const vpDob              = $("vpDob");
-const vpGender           = $("vpGender");
-const vpLocation         = $("vpLocation");
-const vpInterests        = $("vpInterests");
-const vpMediaGrid        = $("vpMediaGrid");
-const vpMediaCount       = $("vpMediaCount");
-const vpSkeleton         = $("vpSkeleton");
-const vpContent          = $("vpContent");
-const vpMsgBtn           = $("vpMsgBtn");
+const vpCloseBtn = $("vpCloseBtn");
+const vpAvatar = $("vpAvatar");
+const vpName = $("vpName");
+const vpUsername = $("vpUsername");
+const vpOnlineBadge = $("vpOnlineBadge");
+const vpOnlineLabel = $("vpOnlineLabel");
+const vpAbout = $("vpAbout");
+const vpEmail = $("vpEmail");
+const vpPhone = $("vpPhone");
+const vpJoined = $("vpJoined");
+const vpDob = $("vpDob");
+const vpGender = $("vpGender");
+const vpLocation = $("vpLocation");
+const vpInterests = $("vpInterests");
+const vpMediaGrid = $("vpMediaGrid");
+const vpMediaCount = $("vpMediaCount");
+const vpSkeleton = $("vpSkeleton");
+const vpContent = $("vpContent");
+const vpMsgBtn = $("vpMsgBtn");
 
-// Voice / mic
-const micBtn       = $("micBtn");
-const micIcon      = $("micIcon");
+const micBtn = $("micBtn");
+const micIcon = $("micIcon");
 const waveformWrap = $("waveform");
-const recTimerEl   = $("recTimer");
-const recTimeEl    = $("recTime");
+const recTimerEl = $("recTimer");
+const recTimeEl = $("recTime");
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ✅ REFRESH ALL PROFILE IMAGES — surgical update, no DOM re-creation
+// ═══════════════════════════════════════════════════════════════════════════════
+function refreshAllProfileImages() {
+  if (!ME) return;
+  const url = ME.avatar || "";
+  const name = ME.name || "?";
+
+  // ── 1. Sidebar nav avatar (the small circle in the bottom of the sidebar) ──
+  buildAvatarEl(sidebarAvatar, name, url, true);
+
+  // ── 2. avatarWrap mobile sidebar block ────────────────────────────────────
+  const avEl = avatarWrap?.querySelector(".sidebar-avatar");
+  if (avEl && avEl !== sidebarAvatar) buildAvatarEl(avEl, name, url, true);
+
+  // ── 3. Right info-panel avatar ─────────────────────────────────────────────
+  buildAvatarEl(ipAvatar, name, url, true);
+  if (ipAvatar) {
+    ipAvatar.style.width = "72px";
+    ipAvatar.style.height = "72px";
+  }
+
+  // ── 4. View-profile panel when viewing own profile ─────────────────────────
+  if (currentViewedUid === ME.uid && vpAvatar) {
+    buildAvatarEl(vpAvatar, name, url, true);
+  }
+
+  // ── 5. Sent message bubbles — avatar beside own messages ──────────────────
+  messagesArea?.querySelectorAll(".msg-row.sent .msg-av").forEach(el => {
+    buildAvatarEl(el, name, url, true);
+  });
+
+  // ── 6. Online strip pill for ourselves ────────────────────────────────────
+  onlineStrip?.querySelectorAll(".online-pill").forEach(pill => {
+    const nameEl = pill.querySelector(".op-name");
+    if (nameEl && (nameEl.textContent.includes("(you)") || nameEl.textContent.trim() === name || nameEl.textContent.includes(name))) {
+      buildAvatarEl(pill.querySelector(".op-av"), name, url, true);
+    }
+  });
+
+  // ── 7. allChatList — own entry if visible ─────────────────────────────────
+  allChatList?.querySelectorAll(`.chat-item[data-id="${ME.uid}"] .ci-avatar`).forEach(el => {
+    buildAvatarEl(el, name, url, true);
+  });
+
+  // ── 8. Re-attach the hover-edit overlay without full re-render ────────────
+  // (small delay so any ongoing paint finishes first)
+  setTimeout(() => initIpAvatarEdit(), 60);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ✅ LISTEN OWN PRESENCE — real-time avatar / status from other devices/tabs
+// ═══════════════════════════════════════════════════════════════════════════════
+function listenOwnPresence() {
+  if (!ME) return;
+  ownPresenceUnsub?.();
+
+  ownPresenceUnsub = onSnapshot(doc(db, "presence", ME.uid), (snap) => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    let changed = false;
+
+    if (data.avatar && data.avatar !== ME.avatar) {
+      ME.avatar = data.avatar;
+      const profile = loadMyProfile(ME.uid);
+      if (profile) {
+        profile.avatar = data.avatar;
+        localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
+      }
+      changed = true;
+    }
+
+    if (data.status && data.status !== ME.status) {
+      ME.status = data.status;
+      if (ipAbout && !ipAbout.parentElement?.querySelector(".about-edit-wrap"))
+        ipAbout.textContent = data.status;
+    }
+
+    if (changed) refreshAllProfileImages();
+  });
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // UNREAD BADGE SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function loadLastSeenTs(uid) {
-  lastSeenTs.clear();
-}
+function loadLastSeenTs() { lastSeenTs.clear(); }
 
 function saveLastSeenTs(roomId, ts) {
   if (!ME || !ts) return;
@@ -426,25 +519,12 @@ async function countUnreadForRoom(roomId) {
   if (!ME) return 0;
   const seen = getLastSeenTs(roomId);
   try {
-    let q;
-    if (seen) {
-      q = query(
-        collection(db, "rooms", roomId, "messages"),
-        where("createdAt", ">", seen),
-        orderBy("createdAt", "asc")
-      );
-    } else {
-      q = query(collection(db, "rooms", roomId, "messages"), orderBy("createdAt", "asc"));
-    }
+    const q = seen
+      ? query(collection(db, "rooms", roomId, "messages"), where("createdAt", ">", seen), orderBy("createdAt", "asc"))
+      : query(collection(db, "rooms", roomId, "messages"), orderBy("createdAt", "asc"));
     const snap = await getDocs(q);
-    const count = snap.docs.filter(d => {
-      const data = d.data();
-      return data.uid !== ME.uid && data.uid !== "system" && !data.deleted;
-    }).length;
-    return count;
-  } catch {
-    return 0;
-  }
+    return snap.docs.filter(d => { const data = d.data(); return data.uid !== ME.uid && data.uid !== "system" && !data.deleted; }).length;
+  } catch { return 0; }
 }
 
 // ─── Presence map helpers ─────────────────────────────────────────────────────
@@ -452,18 +532,18 @@ function upsertPresenceUser(uid, fields) {
   if (!uid) return;
   const existing = presenceUsersMap.get(uid);
   if (existing) {
-    if (fields.name     !== undefined) existing.name     = fields.name;
-    if (fields.avatar   !== undefined) existing.avatar   = fields.avatar;
-    if (fields.status   !== undefined) existing.status   = fields.status;
-    if (fields.online   !== undefined) existing.online   = fields.online;
+    if (fields.name !== undefined) existing.name = fields.name;
+    if (fields.avatar !== undefined) existing.avatar = fields.avatar;
+    if (fields.status !== undefined) existing.status = fields.status;
+    if (fields.online !== undefined) existing.online = fields.online;
     if (fields.lastSeen !== undefined) existing.lastSeen = fields.lastSeen;
   } else {
     presenceUsersMap.set(uid, {
       uid,
-      name:     fields.name     ?? uid,
-      avatar:   fields.avatar   ?? "",
-      status:   fields.status   ?? "",
-      online:   fields.online   ?? false,
+      name: fields.name ?? uid,
+      avatar: fields.avatar ?? "",
+      status: fields.status ?? "",
+      online: fields.online ?? false,
       lastSeen: fields.lastSeen ?? null,
     });
   }
@@ -478,23 +558,23 @@ function getDmRoom(otherUid) { return existingDmRooms.get(otherUid) || null; }
 function upsertDmRoom(otherUid, fields) {
   const existing = existingDmRooms.get(otherUid);
   if (existing) {
-    if (fields.roomId   !== undefined) existing.roomId   = fields.roomId;
-    if (fields.name     !== undefined) existing.name     = fields.name;
-    if (fields.avatar   !== undefined) existing.avatar   = fields.avatar;
-    if (fields.status   !== undefined) existing.status   = fields.status;
-    if (fields.online   !== undefined) existing.online   = fields.online;
+    if (fields.roomId !== undefined) existing.roomId = fields.roomId;
+    if (fields.name !== undefined) existing.name = fields.name;
+    if (fields.avatar !== undefined) existing.avatar = fields.avatar;
+    if (fields.status !== undefined) existing.status = fields.status;
+    if (fields.online !== undefined) existing.online = fields.online;
     if (fields.lastText !== undefined) existing.lastText = fields.lastText;
-    if (fields.lastTs   !== undefined) existing.lastTs   = fields.lastTs;
+    if (fields.lastTs !== undefined) existing.lastTs = fields.lastTs;
   } else {
     existingDmRooms.set(otherUid, {
-      uid:      otherUid,
-      roomId:   fields.roomId   ?? getRoomId(ME?.uid, otherUid),
-      name:     fields.name     ?? otherUid,
-      avatar:   fields.avatar   ?? "",
-      status:   fields.status   ?? "",
-      online:   fields.online   ?? false,
+      uid: otherUid,
+      roomId: fields.roomId ?? getRoomId(ME?.uid, otherUid),
+      name: fields.name ?? otherUid,
+      avatar: fields.avatar ?? "",
+      status: fields.status ?? "",
+      online: fields.online ?? false,
       lastText: fields.lastText ?? "",
-      lastTs:   fields.lastTs   ?? null,
+      lastTs: fields.lastTs ?? null,
     });
   }
 }
@@ -507,8 +587,7 @@ function resetInfoPanelFields() {
   const clearText = (el) => { if (el) el.textContent = ""; };
   const clearHtml = (el) => { if (el) { el.innerHTML = ""; el.style.display = ""; } };
 
-  clearText(ipName); clearText(ipUsername); clearText(ipAbout);
-  clearText(ipJoined);
+  clearText(ipName); clearText(ipUsername); clearText(ipAbout); clearText(ipJoined);
 
   if (ipAvatar) {
     ipAvatar.style.background = "";
@@ -520,10 +599,7 @@ function resetInfoPanelFields() {
   clearHtml(ipEmail); clearHtml(ipPhone); clearHtml(ipDob);
   clearHtml(ipGender); clearHtml(ipLocation);
 
-  if (ipInterests) {
-    ipInterests.innerHTML = "";
-    ipInterests.style.cssText = "";
-  }
+  if (ipInterests) { ipInterests.innerHTML = ""; ipInterests.style.cssText = ""; }
   if (ipGroupMembersList) ipGroupMembersList.innerHTML = "";
   ipExtraSection?.classList.add("hidden");
   ipGroupMembersSection?.classList.add("hidden");
@@ -532,7 +608,7 @@ function resetInfoPanelFields() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // RESPONSIVE
 // ═══════════════════════════════════════════════════════════════════════════════
-function openSidebar()  { sidebar?.classList.add("open"); sidebarOverlay?.classList.add("active"); }
+function openSidebar() { sidebar?.classList.add("open"); sidebarOverlay?.classList.add("active"); }
 function closeSidebar() { sidebar?.classList.remove("open"); sidebarOverlay?.classList.remove("active"); }
 
 mobileMenuBtn?.addEventListener("click", openSidebar);
@@ -540,24 +616,12 @@ sidebarCloseBtn?.addEventListener("click", closeSidebar);
 sidebarOverlay?.addEventListener("click", closeSidebar);
 mobileNewChatBtn?.addEventListener("click", () => { closeSidebar(); openNewChatModal(); });
 
-function mobileChatOpen() {
-  if (window.innerWidth <= 768) {
-    document.body.classList.add("chat-active");
-    closeSidebar();
-    closeGroupsPanel();
-  }
-}
+function mobileChatOpen() { if (window.innerWidth <= 768) { document.body.classList.add("chat-active"); closeSidebar(); closeGroupsPanel(); } }
 function mobileChatClose() { document.body.classList.remove("chat-active"); }
 chatBackBtn?.addEventListener("click", mobileChatClose);
 
-function openInfoPanel() {
-  infoPanel?.classList.add("open");
-  if (window.innerWidth <= 1024) infoPanelOverlay?.classList.add("active");
-}
-function closeInfoPanel() {
-  infoPanel?.classList.remove("open");
-  infoPanelOverlay?.classList.remove("active");
-}
+function openInfoPanel() { infoPanel?.classList.add("open"); if (window.innerWidth <= 1024) infoPanelOverlay?.classList.add("active"); }
+function closeInfoPanel() { infoPanel?.classList.remove("open"); infoPanelOverlay?.classList.remove("active"); }
 infoPanelToggleBtn?.addEventListener("click", openInfoPanel);
 infoPanelCloseBtn?.addEventListener("click", closeInfoPanel);
 infoPanelOverlay?.addEventListener("click", closeInfoPanel);
@@ -565,7 +629,7 @@ infoPanelOverlay?.addEventListener("click", closeInfoPanel);
 let _lastWindowWidth = window.innerWidth;
 window.addEventListener("resize", () => {
   const w = window.innerWidth;
-  if (w > 768  && _lastWindowWidth <= 768)  { closeSidebar(); mobileChatClose(); closeInfoPanel(); closeGroupsPanel(); closeViewProfile(); }
+  if (w > 768 && _lastWindowWidth <= 768) { closeSidebar(); mobileChatClose(); closeInfoPanel(); closeGroupsPanel(); closeViewProfile(); }
   if (w > 1024 && _lastWindowWidth <= 1024) { closeInfoPanel(); }
   _lastWindowWidth = w;
 });
@@ -579,10 +643,7 @@ function showToast(msg, type = "success") {
   t.className = `toast ${type}`;
   t.innerHTML = `<i class="${icons[type] || icons.success}"></i><span>${msg}</span>`;
   toastContainer.appendChild(t);
-  setTimeout(() => {
-    t.classList.add("hide");
-    t.addEventListener("animationend", () => t.remove());
-  }, 3200);
+  setTimeout(() => { t.classList.add("hide"); t.addEventListener("animationend", () => t.remove()); }, 3200);
 }
 
 window._vpShowToast = showToast;
@@ -592,13 +653,11 @@ window._vpShowToast = showToast;
 // ═══════════════════════════════════════════════════════════════════════════════
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  if (themeIcon)      themeIcon.className  = theme === "dark" ? "ri-sun-line" : "ri-moon-line";
+  if (themeIcon) themeIcon.className = theme === "dark" ? "ri-sun-line" : "ri-moon-line";
   if (themeLabelText) themeLabelText.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
   localStorage.setItem("nt_theme", theme);
 }
-themeToggleBtn?.addEventListener("click", () => {
-  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
-});
+themeToggleBtn?.addEventListener("click", () => applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"));
 applyTheme(localStorage.getItem("nt_theme") || "light");
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -609,6 +668,7 @@ document.addEventListener("click", closeMoreDropdown);
 pdLogout?.addEventListener("click", async () => {
   await setPresenceOffline();
   stopPresenceHeartbeat();
+  ownPresenceUnsub?.();
   blockUnsub?.();
   blockedByUnsub?.();
   await signOut(auth);
@@ -625,16 +685,16 @@ onAuthStateChanged(auth, async (user) => {
   if (!profile?.setupDone) { window.location.href = "./profile-setup.html"; return; }
 
   ME = {
-    uid:       user.uid,
-    name:      profile.name,
-    avatar:    profile.avatar  || "",
-    status:    profile.status  || "Hey there! I'm using NexTalk",
-    email:     profile.email   || user.email || "",
-    phone:     profile.phone   || "",
-    dob:       profile.dob     || "",
-    gender:    profile.gender  || "",
+    uid: user.uid,
+    name: profile.name,
+    avatar: profile.avatar || "",
+    status: profile.status || "Hey there! I'm using NexTalk",
+    email: profile.email || user.email || "",
+    phone: profile.phone || "",
+    dob: profile.dob || "",
+    gender: profile.gender || "",
     interests: profile.interests || [],
-    location:  profile.location  || {},
+    location: profile.location || {},
   };
 
   pinnedChats = loadPinnedChats(user.uid);
@@ -650,34 +710,24 @@ async function syncProfileToFirestore() {
   const profile = loadMyProfile(ME.uid);
   try {
     await setDoc(doc(db, "users", ME.uid), {
-      uid:       ME.uid,
-      name:      ME.name,
-      avatar:    ME.avatar,
-      status:    ME.status,
-      email:     ME.email,
-      phone:     ME.phone      || "",
-      dob:       ME.dob        || "",
-      gender:    ME.gender     || "",
-      interests: ME.interests  || [],
-      location:  ME.location   || {},
+      uid: ME.uid, name: ME.name, avatar: ME.avatar, status: ME.status,
+      email: ME.email, phone: ME.phone || "", dob: ME.dob || "", gender: ME.gender || "",
+      interests: ME.interests || [], location: ME.location || {},
       createdAt: profile?.createdAt ? new Date(profile.createdAt) : serverTimestamp(),
       updatedAt: serverTimestamp(),
     }, { merge: true });
-  } catch (err) {
-    console.warn("syncProfileToFirestore:", err);
-  }
+  } catch (err) { console.warn("syncProfileToFirestore:", err); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════════════════════
 async function init() {
+  // ── Initial render of our own avatar everywhere ───────────────────────────
   buildAvatarEl(sidebarAvatar, ME.name, ME.avatar);
-
-  // ── FIX 1: Mobile sidebar — show name next to avatar ──────────────────────
   updateSidebarAvatarInfo();
-
   renderOwnProfileInInfoPanel();
+
   await setPresenceOnline();
   syncProfileToFirestore().catch(console.warn);
 
@@ -690,6 +740,7 @@ async function init() {
   listenPresence();
   listenGroups();
   listenBlockedUsers();
+  listenOwnPresence();   // ✅ real-time own avatar/status
 
   openRoom(ROOM_GENERAL, getGeneralChatName(), null, true, null, false);
   startPresenceHeartbeat();
@@ -697,85 +748,55 @@ async function init() {
   initAboutEditButton();
   initMicButton();
   initIpBlockBtn();
-
-  // ── FIX 2: Click own avatar in sidebar → open own profile panel ───────────
   initSidebarAvatarClick();
-
-  // ── FIX 3: Right panel avatar hover edit overlay ──────────────────────────
   initIpAvatarEdit();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// FIX 1 — SIDEBAR MOBILE: show name & email next to avatar
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Sidebar mobile name/email ────────────────────────────────────────────────
 function updateSidebarAvatarInfo() {
   if (!ME || !avatarWrap) return;
 
-  // Inject name & email elements if not already there
-  let nameEl  = avatarWrap.querySelector(".avatar-name");
+  let nameEl = avatarWrap.querySelector(".avatar-name");
   let emailEl = avatarWrap.querySelector(".avatar-email");
   let infoDiv = avatarWrap.querySelector(".avatar-user-info");
 
   if (!infoDiv) {
-    infoDiv = document.createElement("div");
-    infoDiv.className = "avatar-user-info";
-
-    nameEl = document.createElement("span");
-    nameEl.className = "avatar-name";
-
-    emailEl = document.createElement("span");
-    emailEl.className = "avatar-email";
-
+    infoDiv = document.createElement("div"); infoDiv.className = "avatar-user-info";
+    nameEl = document.createElement("span"); nameEl.className = "avatar-name";
+    emailEl = document.createElement("span"); emailEl.className = "avatar-email";
     infoDiv.appendChild(nameEl);
     infoDiv.appendChild(emailEl);
-
-    // Insert after sidebarAvatar element
     const avEl = avatarWrap.querySelector(".sidebar-avatar");
-    if (avEl && avEl.nextSibling) {
-      avatarWrap.insertBefore(infoDiv, avEl.nextSibling);
-    } else {
-      avatarWrap.appendChild(infoDiv);
-    }
+    if (avEl?.nextSibling) avatarWrap.insertBefore(infoDiv, avEl.nextSibling);
+    else avatarWrap.appendChild(infoDiv);
   }
 
-  nameEl.textContent  = ME.name  || "User";
+  nameEl.textContent = ME.name || "User";
   emailEl.textContent = ME.email || "";
 
-  // Also add chevron icon if not present
   if (!avatarWrap.querySelector(".avatar-chevron")) {
     const chevron = document.createElement("i");
     chevron.className = "ri-arrow-up-s-line avatar-chevron";
     avatarWrap.appendChild(chevron);
   }
+  // NOTE: we do NOT touch .sidebar-avatar here — avatar is managed exclusively
+  // by buildAvatarEl / refreshAllProfileImages to prevent overwrite races.
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// FIX 2 — SIDEBAR AVATAR CLICK → open own profile in view-profile panel
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Sidebar avatar click → own profile panel ─────────────────────────────────
 function initSidebarAvatarClick() {
   if (!avatarWrap) return;
-
   avatarWrap.style.cursor = "pointer";
-  avatarWrap.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openOwnProfilePanel();
-    closeSidebar();
-  });
+  avatarWrap.addEventListener("click", (e) => { e.stopPropagation(); openOwnProfilePanel(); closeSidebar(); });
 }
 
 function openOwnProfilePanel() {
   if (!ME) return;
-
-  // Mark as own profile view
   currentViewedUid = ME.uid;
-
-  // Show skeleton first
   showViewProfileSkeleton();
   viewProfilePanel?.classList.add("open");
   viewProfileOverlay?.classList.add("active");
   if (window.innerWidth <= 768) document.body.style.overflow = "hidden";
-
-  // Render own data
   renderOwnProfileInVpPanel();
 }
 
@@ -783,18 +804,11 @@ function renderOwnProfileInVpPanel() {
   if (!ME) return;
   hideViewProfileSkeleton();
 
-  // Avatar
-  if (vpAvatar) {
-    vpAvatar.style.background = colorFor(ME.name);
-    vpAvatar.innerHTML = ME.avatar
-      ? `<img src="${escHtml(ME.avatar)}" alt="${escHtml(ME.name)}" />`
-      : `<span>${(ME.name || "?").charAt(0).toUpperCase()}</span>`;
-  }
+  if (vpAvatar) buildAvatarEl(vpAvatar, ME.name, ME.avatar, true);
 
-  if (vpName)     vpName.textContent     = ME.name || "—";
+  if (vpName) vpName.textContent = ME.name || "—";
   if (vpUsername) vpUsername.textContent = `@${(ME.name || "").toLowerCase().replace(/\s+/g, "")}`;
 
-  // Online badge — own profile is always online
   if (vpOnlineBadge) {
     vpOnlineBadge.className = "vp-online-badge online";
     if (vpOnlineLabel) vpOnlineLabel.textContent = "Online (You)";
@@ -802,9 +816,9 @@ function renderOwnProfileInVpPanel() {
 
   if (vpAbout) vpAbout.textContent = ME.status || "Hey there! I'm using NexTalk";
 
-  setVpText(vpEmail,  ME.email  || "—");
-  setVpText(vpPhone,  ME.phone  || "—");
-  setVpText(vpDob,    ME.dob    ? formatDob(ME.dob) : "—");
+  setVpText(vpEmail, ME.email || "—");
+  setVpText(vpPhone, ME.phone || "—");
+  setVpText(vpDob, ME.dob ? formatDob(ME.dob) : "—");
 
   if (vpGender) {
     vpGender.innerHTML = (ME.gender && ME.gender !== "Not specified")
@@ -827,7 +841,7 @@ function renderOwnProfileInVpPanel() {
       vpInterests.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
       ME.interests.forEach(tag => {
         const chip = document.createElement("span");
-        chip.className   = "vp-interest-chip";
+        chip.className = "vp-interest-chip";
         chip.textContent = tag;
         vpInterests.appendChild(chip);
       });
@@ -843,13 +857,11 @@ function renderOwnProfileInVpPanel() {
       : "—";
   }
 
-  // Hide message button & block button for own profile
-  const vpActions  = viewProfilePanel?.querySelector(".vp-actions");
+  const vpActions = viewProfilePanel?.querySelector(".vp-actions");
   const vpBottomActs = viewProfilePanel?.querySelector(".vp-bottom-actions");
-  if (vpActions)    vpActions.style.display = "none";
+  if (vpActions) vpActions.style.display = "none";
   if (vpBottomActs) vpBottomActs.style.display = "none";
 
-  // No shared media for self
   if (vpMediaGrid) {
     vpMediaGrid.innerHTML = `<div class="vp-media-empty"><i class="ri-image-line"></i><span>No shared media</span></div>`;
   }
@@ -857,101 +869,85 @@ function renderOwnProfileInVpPanel() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FIX 3 — INFO PANEL AVATAR HOVER EDIT OVERLAY
+// ✅ AVATAR EDIT OVERLAY — uploads, updates state + Firestore, then surgically
+//    refreshes every avatar node without triggering full re-renders.
 // ═══════════════════════════════════════════════════════════════════════════════
 function initIpAvatarEdit() {
   if (!ipAvatar) return;
-
-  // Wrap avatar in a relative container if not already
   const ring = ipAvatar.closest(".ip-avatar-ring");
   if (!ring) return;
 
-  // Inject edit overlay
-  if (!ring.querySelector(".ip-avatar-edit-overlay")) {
-    const overlay = document.createElement("div");
-    overlay.className = "ip-avatar-edit-overlay";
-    overlay.innerHTML = `<i class="ri-camera-line"></i><span>Change</span>`;
-    overlay.style.cssText = `
-      position:absolute;
-      inset:0;
-      border-radius:50%;
-      background:rgba(0,0,0,0.48);
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      gap:3px;
-      opacity:0;
-      transition:opacity .2s;
-      cursor:pointer;
-      z-index:2;
-      color:#fff;
-      font-size:11px;
-      font-weight:600;
-      font-family:'Work Sans',sans-serif;
-    `;
-    overlay.querySelector("i").style.cssText = "font-size:22px;line-height:1;";
+  // Remove stale overlay / hidden input to avoid duplicates
+  ring.querySelector(".ip-avatar-edit-overlay")?.remove();
+  document.getElementById("ipAvatarFileInput")?.remove();
 
-    ring.style.position = "relative";
-    ring.style.cursor   = "pointer";
-    ring.appendChild(overlay);
+  const overlay = document.createElement("div");
+  overlay.className = "ip-avatar-edit-overlay";
+  overlay.innerHTML = `<i class="ri-camera-line"></i><span>Change</span>`;
+  overlay.style.cssText = `
+    position:absolute;inset:0;border-radius:50%;
+    background:rgba(0,0,0,0.48);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;opacity:0;transition:opacity .2s;cursor:pointer;z-index:2;
+    color:#fff;font-size:11px;font-weight:600;font-family:'Work Sans',sans-serif;
+  `;
+  overlay.querySelector("i").style.cssText = "font-size:22px;line-height:1;";
 
-    // Show/hide on hover
-    ring.addEventListener("mouseenter", () => { overlay.style.opacity = "1"; });
-    ring.addEventListener("mouseleave", () => { overlay.style.opacity = "0"; });
+  ring.style.position = "relative";
+  ring.style.cursor = "pointer";
+  ring.appendChild(overlay);
 
-    // Hidden file input for avatar upload
-    const fileInput = document.createElement("input");
-    fileInput.type   = "file";
-    fileInput.accept = "image/*";
-    fileInput.style.display = "none";
-    fileInput.id = "ipAvatarFileInput";
-    document.body.appendChild(fileInput);
+  ring.addEventListener("mouseenter", () => { overlay.style.opacity = "1"; });
+  ring.addEventListener("mouseleave", () => { overlay.style.opacity = "0"; });
 
-    overlay.addEventListener("click", () => fileInput.click());
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*";
+  fileInput.style.display = "none";
+  fileInput.id = "ipAvatarFileInput";
+  document.body.appendChild(fileInput);
 
-    fileInput.addEventListener("change", async () => {
-      const file = fileInput.files[0];
-      if (!file || !ME) return;
-      if (file.size > 5 * 1024 * 1024) { showToast("Image too large. Max 5 MB.", "warning"); return; }
+  overlay.addEventListener("click", () => fileInput.click());
 
-      showToast("Uploading avatar…");
-      try {
-        const uniqueName = `avatar_${ME.uid}_${Date.now()}.${file.name.split(".").pop()}`;
-        const path       = `avatars/${ME.uid}/${uniqueName}`;
-        const ref        = storageRef(storage, path);
-        const snapshot   = await uploadBytes(ref, file);
-        const url        = await getDownloadURL(snapshot.ref);
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file || !ME) return;
+    if (file.size > 5 * 1024 * 1024) { showToast("Image too large. Max 5 MB.", "warning"); return; }
 
-        // Update ME
-        ME.avatar = url;
+    showToast("Uploading avatar…");
+    try {
+      const ext = file.name.split(".").pop();
+      const uniqueName = `avatar_${ME.uid}_${Date.now()}.${ext}`;
+      const path = `avatars/${ME.uid}/${uniqueName}`;
+      const ref = storageRef(storage, path);
+      const snapshot = await uploadBytes(ref, file);
+      const url = await getDownloadURL(snapshot.ref);
 
-        // Update localStorage profile
-        const profile = loadMyProfile(ME.uid);
-        if (profile) {
-          profile.avatar = url;
-          localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
-        }
+      // ── 1. Update ME state ─────────────────────────────────────────────────
+      ME.avatar = url;
 
-        // Sync to Firestore + Presence
-        await Promise.all([
-          setDoc(doc(db, "users",    ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
-          setDoc(doc(db, "presence", ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
-        ]);
-
-        // Update all avatar elements on screen
-        buildAvatarEl(ipAvatar, ME.name, ME.avatar);
-        buildAvatarEl(sidebarAvatar, ME.name, ME.avatar);
-        renderOwnProfileInInfoPanel();
-        if (currentViewedUid === ME.uid) renderOwnProfileInVpPanel();
-
-        showToast("Avatar updated ✓");
-      } catch (err) {
-        showToast("Upload failed: " + err.message, "error");
+      // ── 2. Persist to localStorage ────────────────────────────────────────
+      const profile = loadMyProfile(ME.uid);
+      if (profile) {
+        profile.avatar = url;
+        localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
       }
-      fileInput.value = "";
-    });
-  }
+
+      // ── 3. Push to Firestore (triggers onSnapshot on other devices/tabs) ──
+      await Promise.all([
+        setDoc(doc(db, "users", ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
+        setDoc(doc(db, "presence", ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
+      ]);
+
+      // ── 4. Surgically update every avatar node — no full re-render ─────────
+      refreshAllProfileImages();
+
+      showToast("Avatar updated ✓");
+    } catch (err) {
+      showToast("Upload failed: " + err.message, "error");
+    }
+    fileInput.value = "";
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -980,19 +976,13 @@ function startPresenceHeartbeat() {
   stopPresenceHeartbeat();
   _presenceHeartbeatTimer = setInterval(async () => {
     if (!ME) return;
-    try {
-      await setDoc(doc(db, "presence", ME.uid), {
-        online: true, updatedAt: serverTimestamp(),
-      }, { merge: true });
-    } catch (err) { console.warn("heartbeat:", err); }
+    try { await setDoc(doc(db, "presence", ME.uid), { online: true, updatedAt: serverTimestamp() }, { merge: true }); }
+    catch (err) { console.warn("heartbeat:", err); }
   }, HEARTBEAT_INTERVAL_MS);
 }
 
 function stopPresenceHeartbeat() {
-  if (_presenceHeartbeatTimer) {
-    clearInterval(_presenceHeartbeatTimer);
-    _presenceHeartbeatTimer = null;
-  }
+  if (_presenceHeartbeatTimer) { clearInterval(_presenceHeartbeatTimer); _presenceHeartbeatTimer = null; }
 }
 
 function isTrulyOnline(data) {
@@ -1029,22 +1019,20 @@ function listenBlockedUsers() {
 async function blockUser(otherUid, otherName) {
   if (!ME || !otherUid) return;
   try {
-    await setDoc(doc(db, "users", ME.uid,    "blockedUsers", otherUid), { blockedAt: serverTimestamp(), name: otherName || otherUid });
-    await setDoc(doc(db, "users", otherUid,  "blockedBy",    ME.uid),   { blockedAt: serverTimestamp() });
+    await setDoc(doc(db, "users", ME.uid, "blockedUsers", otherUid), { blockedAt: serverTimestamp(), name: otherName || otherUid });
+    await setDoc(doc(db, "users", otherUid, "blockedBy", ME.uid), { blockedAt: serverTimestamp() });
     showToast(`${escHtml(otherName || "User")} has been blocked 🚫`);
-    updateBlockedUI();
-    updateBlockMenuLabels();
+    updateBlockedUI(); updateBlockMenuLabels();
   } catch (err) { showToast("Failed to block user: " + err.message, "error"); }
 }
 
 async function unblockUser(otherUid, otherName) {
   if (!ME || !otherUid) return;
   try {
-    await deleteDoc(doc(db, "users", ME.uid,   "blockedUsers", otherUid));
-    await deleteDoc(doc(db, "users", otherUid, "blockedBy",    ME.uid));
+    await deleteDoc(doc(db, "users", ME.uid, "blockedUsers", otherUid));
+    await deleteDoc(doc(db, "users", otherUid, "blockedBy", ME.uid));
     showToast(`${escHtml(otherName || "User")} has been unblocked ✓`);
-    updateBlockedUI();
-    updateBlockMenuLabels();
+    updateBlockedUI(); updateBlockMenuLabels();
   } catch (err) { showToast("Failed to unblock user: " + err.message, "error"); }
 }
 
@@ -1053,20 +1041,12 @@ function getOtherUidFromActiveRoom() {
   return activeRoomId.split("__").find(p => p !== ME?.uid) || null;
 }
 
-function isCurrentChatBlocked() {
-  const uid = getOtherUidFromActiveRoom();
-  return uid ? (blockedUsers.has(uid) || blockedByUsers.has(uid)) : false;
-}
-
-function didIBlockOther()    { const uid = getOtherUidFromActiveRoom(); return uid ? blockedUsers.has(uid)   : false; }
+function isCurrentChatBlocked() { const uid = getOtherUidFromActiveRoom(); return uid ? (blockedUsers.has(uid) || blockedByUsers.has(uid)) : false; }
+function didIBlockOther() { const uid = getOtherUidFromActiveRoom(); return uid ? blockedUsers.has(uid) : false; }
 function amIBlockedByOther() { const uid = getOtherUidFromActiveRoom(); return uid ? blockedByUsers.has(uid) : false; }
 
 function updateBlockedUI() {
-  if (!activeRoomId || activeRoomId === ROOM_GENERAL || activeRoomMeta.isGroup) {
-    showInputBarEnabled(true);
-    updateBlockMenuLabels();
-    return;
-  }
+  if (!activeRoomId || activeRoomId === ROOM_GENERAL || activeRoomMeta.isGroup) { showInputBarEnabled(true); updateBlockMenuLabels(); return; }
   showInputBarEnabled(!isCurrentChatBlocked());
   updateBlockMenuLabels();
   updateIpBlockBtn(getOtherUidFromActiveRoom());
@@ -1074,49 +1054,42 @@ function updateBlockedUI() {
 
 function showInputBarEnabled(enabled) {
   document.getElementById("blockedNoticeBar")?.remove();
-
   if (!enabled) {
-    const inputBar  = document.querySelector(".input-bar");
+    const inputBar = document.querySelector(".input-bar");
     if (!inputBar) return;
-    const otherUid  = getOtherUidFromActiveRoom();
+    const otherUid = getOtherUidFromActiveRoom();
     const otherName = presenceUsersMap.get(otherUid)?.name || getDmRoom(otherUid)?.name || "User";
-
     const bar = document.createElement("div");
     bar.id = "blockedNoticeBar";
     bar.style.cssText = "display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 16px;background:#fff0f0;border-top:1px solid #fecaca;font-size:13px;font-weight:600;color:var(--error);flex-shrink:0;";
-
     if (didIBlockOther()) {
       bar.innerHTML = `
         <i class="ri-forbid-line" style="font-size:16px;flex-shrink:0;"></i>
         <span>You blocked <strong>${escHtml(otherName)}</strong></span>
-        <button id="blockedNoticeUnblockBtn"
-          style="margin-left:8px;padding:5px 16px;background:#fff;border:1.5px solid #f87171;border-radius:8px;color:var(--error);font-size:12px;font-weight:700;font-family:'Work Sans',sans-serif;cursor:pointer;"
-        >Unblock</button>`;
+        <button id="blockedNoticeUnblockBtn" style="margin-left:8px;padding:5px 16px;background:#fff;border:1.5px solid #f87171;border-radius:8px;color:var(--error);font-size:12px;font-weight:700;font-family:'Work Sans',sans-serif;cursor:pointer;">Unblock</button>`;
       bar.querySelector("#blockedNoticeUnblockBtn")?.addEventListener("click", () => unblockUser(otherUid, otherName));
     } else {
       bar.innerHTML = `
         <i class="ri-forbid-line" style="font-size:16px;flex-shrink:0;"></i>
         <span><strong>${escHtml(otherName)}</strong> blocked you. Messaging is unavailable.</span>`;
     }
-
     inputBar.insertAdjacentElement("beforebegin", bar);
-
-    if (msgInput)       { msgInput.disabled = true; msgInput.placeholder = "Messaging unavailable"; }
-    if (sendBtn)          sendBtn.disabled = true;
-    if (micBtn)           micBtn.disabled  = true;
-    if (attachBtn)        attachBtn.disabled = true;
-    if (emojiToggleBtn)   emojiToggleBtn.disabled = true;
+    if (msgInput) { msgInput.disabled = true; msgInput.placeholder = "Messaging unavailable"; }
+    if (sendBtn) sendBtn.disabled = true;
+    if (micBtn) micBtn.disabled = true;
+    if (attachBtn) attachBtn.disabled = true;
+    if (emojiToggleBtn) emojiToggleBtn.disabled = true;
   } else {
-    if (msgInput)       { msgInput.disabled = false; msgInput.placeholder = "Type a message…"; }
-    if (sendBtn)          sendBtn.disabled = false;
-    if (micBtn)           micBtn.disabled  = false;
-    if (attachBtn)        attachBtn.disabled = false;
-    if (emojiToggleBtn)   emojiToggleBtn.disabled = false;
+    if (msgInput) { msgInput.disabled = false; msgInput.placeholder = "Type a message…"; }
+    if (sendBtn) sendBtn.disabled = false;
+    if (micBtn) micBtn.disabled = false;
+    if (attachBtn) attachBtn.disabled = false;
+    if (emojiToggleBtn) emojiToggleBtn.disabled = false;
   }
 }
 
 function updateBlockMenuLabels() {
-  const otherUid  = getOtherUidFromActiveRoom();
+  const otherUid = getOtherUidFromActiveRoom();
   const isBlocked = otherUid && blockedUsers.has(otherUid);
   if (!mdBlock) return;
   if (isBlocked) {
@@ -1134,10 +1107,10 @@ function updateIpBlockBtn(otherUid) {
   const btn = document.getElementById("ipBlockUserBtn");
   if (!btn || !otherUid) return;
   const isBlocked = blockedUsers.has(otherUid);
-  btn.innerHTML   = isBlocked ? `<i class="ri-user-received-line"></i> Unblock User` : `<i class="ri-forbid-line"></i> Block User`;
-  btn.style.background   = isBlocked ? "#f0fff4"   : "";
-  btn.style.color        = isBlocked ? "#16a34a"   : "";
-  btn.style.borderColor  = isBlocked ? "#86efac"   : "";
+  btn.innerHTML = isBlocked ? `<i class="ri-user-received-line"></i> Unblock User` : `<i class="ri-forbid-line"></i> Block User`;
+  btn.style.background = isBlocked ? "#f0fff4" : "";
+  btn.style.color = isBlocked ? "#16a34a" : "";
+  btn.style.borderColor = isBlocked ? "#86efac" : "";
 }
 
 function initIpBlockBtn() {
@@ -1145,12 +1118,8 @@ function initIpBlockBtn() {
     const otherUid = getOtherUidFromActiveRoom();
     if (!otherUid) { showToast("Please open a direct chat first.", "warning"); return; }
     const otherName = presenceUsersMap.get(otherUid)?.name || getDmRoom(otherUid)?.name || "User";
-    if (blockedUsers.has(otherUid)) {
-      await unblockUser(otherUid, otherName);
-    } else {
-      if (!confirm(`Block "${otherName}"?\nThey won't be able to message you until unblocked.`)) return;
-      await blockUser(otherUid, otherName);
-    }
+    if (blockedUsers.has(otherUid)) await unblockUser(otherUid, otherName);
+    else { if (!confirm(`Block "${otherName}"?\nThey won't be able to message you until unblocked.`)) return; await blockUser(otherUid, otherName); }
   });
 }
 
@@ -1159,12 +1128,8 @@ mdBlock?.addEventListener("click", async () => {
   const otherUid = getOtherUidFromActiveRoom();
   if (!otherUid) { showToast("Only available in direct chats.", "warning"); return; }
   const otherName = presenceUsersMap.get(otherUid)?.name || getDmRoom(otherUid)?.name || "User";
-  if (blockedUsers.has(otherUid)) {
-    await unblockUser(otherUid, otherName);
-  } else {
-    if (!confirm(`Block "${otherName}"?\nThey won't be able to message you until unblocked.`)) return;
-    await blockUser(otherUid, otherName);
-  }
+  if (blockedUsers.has(otherUid)) await unblockUser(otherUid, otherName);
+  else { if (!confirm(`Block "${otherName}"?\nThey won't be able to message you until unblocked.`)) return; await blockUser(otherUid, otherName); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1173,24 +1138,20 @@ mdBlock?.addEventListener("click", async () => {
 async function cleanupDuplicateRooms() {
   if (!ME) return;
   try {
-    const ref  = doc(db, "userRooms", ME.uid);
+    const ref = doc(db, "userRooms", ME.uid);
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
-
-    const raw     = snap.data().rooms || [];
+    const raw = snap.data().rooms || [];
     const cleaned = [];
     const seenUids = new Set();
-
     for (const roomId of raw) {
-      const parts    = roomId.split("__");
+      const parts = roomId.split("__");
       if (parts.length !== 2) { cleaned.push(roomId); continue; }
       const otherUid = parts.find(p => p !== ME.uid);
       if (!otherUid) continue;
       if (!seenUids.has(otherUid)) { seenUids.add(otherUid); cleaned.push(roomId); }
     }
-
-    if (cleaned.length !== raw.length)
-      await setDoc(ref, { rooms: cleaned }, { merge: true });
+    if (cleaned.length !== raw.length) await setDoc(ref, { rooms: cleaned }, { merge: true });
   } catch (err) { console.warn("cleanupDuplicateRooms:", err); }
 }
 
@@ -1200,13 +1161,10 @@ async function cleanupDuplicateRooms() {
 async function loadExistingDmRooms() {
   if (!ME) return;
   existingDmRooms.clear();
-
   try {
     const snap = await getDoc(doc(db, "userRooms", ME.uid));
     if (!snap.exists()) return;
-
     const roomIds = [...new Set(snap.data().rooms || [])];
-
     for (const roomId of roomIds) {
       const parts = roomId.split("__");
       if (parts.length !== 2) continue;
@@ -1214,45 +1172,32 @@ async function loadExistingDmRooms() {
       if (!otherUid || otherUid === ME.uid) continue;
       if (existingDmRooms.has(otherUid)) continue;
 
-      let lastText = "";
-      let lastTs   = null;
+      let lastText = "", lastTs = null;
       try {
-        const msgSnap = await getDocs(query(
-          collection(db, "rooms", roomId, "messages"),
-          orderBy("createdAt", "desc"), limit(1)
-        ));
+        const msgSnap = await getDocs(query(collection(db, "rooms", roomId, "messages"), orderBy("createdAt", "desc"), limit(1)));
         if (!msgSnap.empty) {
           const m = msgSnap.docs[0].data();
           if (m.uid !== "system" && !m.deleted) {
-            lastText = m.type === "image"  ? "📷 Image"
-                     : m.type === "file"   ? `📎 ${m.fileName || "File"}`
-                     : m.type === "sticker"? m.text
-                     : m.type === "voice"  ? "🎤 Voice message"
-                     : (m.text || "");
+            lastText = m.type === "image" ? "📷 Image"
+              : m.type === "file" ? `📎 ${m.fileName || "File"}`
+                : m.type === "sticker" ? m.text
+                  : m.type === "voice" ? "🎤 Voice message"
+                    : (m.text || "");
           }
           lastTs = m.createdAt?.toDate ? m.createdAt.toDate() : null;
         }
-      } catch (_) {}
+      } catch (_) { }
 
       upsertDmRoom(otherUid, { roomId, name: otherUid, avatar: "", status: "", online: false, lastText, lastTs });
 
       countUnreadForRoom(roomId).then(count => {
-        if (count > 0) {
-          unreadCounts.set(roomId, count);
-          updateTotalUnreadBadge();
-          renderContactsList();
-        }
+        if (count > 0) { unreadCounts.set(roomId, count); updateTotalUnreadBadge(); renderContactsList(); }
       });
     }
 
     countUnreadForRoom(ROOM_GENERAL).then(count => {
-      if (count > 0) {
-        unreadCounts.set(ROOM_GENERAL, count);
-        updateTotalUnreadBadge();
-        renderContactsList();
-      }
+      if (count > 0) { unreadCounts.set(ROOM_GENERAL, count); updateTotalUnreadBadge(); renderContactsList(); }
     });
-
   } catch (err) { console.warn("loadExistingDmRooms:", err); }
 }
 
@@ -1261,18 +1206,16 @@ async function loadExistingDmRooms() {
 // ═══════════════════════════════════════════════════════════════════════════════
 async function registerDmRoom(roomId) {
   if (!ME) return;
-  const parts    = roomId.split("__");
+  const parts = roomId.split("__");
   if (parts.length !== 2) return;
   const otherUid = parts.find(p => p !== ME.uid);
   if (!otherUid) return;
-
   try {
     const addToList = async (uid) => {
-      const ref  = doc(db, "userRooms", uid);
+      const ref = doc(db, "userRooms", uid);
       const snap = await getDoc(ref);
       const rooms = [...new Set(snap.exists() ? (snap.data().rooms || []) : [])];
-      if (!rooms.includes(roomId))
-        await setDoc(ref, { rooms: [...rooms, roomId] }, { merge: true });
+      if (!rooms.includes(roomId)) await setDoc(ref, { rooms: [...rooms, roomId] }, { merge: true });
     };
     await Promise.all([addToList(ME.uid), addToList(otherUid)]);
   } catch (err) { console.warn("registerDmRoom:", err); }
@@ -1299,21 +1242,20 @@ function openAboutEditor() {
   wrap.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:4px;";
 
   const input = document.createElement("input");
-  input.type        = "text";
-  input.value       = currentText;
-  input.maxLength   = 120;
+  input.type = "text";
+  input.value = currentText;
+  input.maxLength = 120;
   input.placeholder = "Write something about yourself…";
   input.style.cssText = `flex:1;border:none;border-bottom:1.5px solid var(--primary);background:transparent;font-family:'Work Sans',sans-serif;font-size:13px;color:var(--text);outline:none;padding:2px 4px;min-width:0;`;
 
-  const saveBtn   = makeIconBtn("ri-check-line", "Save",   "var(--primary)");
+  const saveBtn = makeIconBtn("ri-check-line", "Save", "var(--primary)");
   const cancelBtn = makeIconBtn("ri-close-line", "Cancel", "");
 
   wrap.append(input, saveBtn, cancelBtn);
   ipAbout.insertAdjacentElement("afterend", wrap);
-  input.focus();
-  input.select();
+  input.focus(); input.select();
 
-  const doSave   = async () => {
+  const doSave = async () => {
     const newStatus = input.value.trim();
     if (!newStatus) { showToast("Status cannot be empty", "warning"); return; }
     await saveAboutStatus(newStatus);
@@ -1323,10 +1265,7 @@ function openAboutEditor() {
 
   saveBtn.addEventListener("click", doSave);
   cancelBtn.addEventListener("click", doCancel);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter")  doSave();
-    if (e.key === "Escape") doCancel();
-  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") doSave(); if (e.key === "Escape") doCancel(); });
 }
 
 function closeAboutEditor(wrap, displayText) {
@@ -1340,7 +1279,7 @@ async function saveAboutStatus(newStatus) {
   ME.status = newStatus;
   const profile = loadMyProfile(ME.uid);
   if (profile) { profile.status = newStatus; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile)); }
-  try { await setDoc(doc(db, "users",    ME.uid), { status: newStatus, updatedAt: serverTimestamp() }, { merge: true }); } catch (err) { console.warn(err); }
+  try { await setDoc(doc(db, "users", ME.uid), { status: newStatus, updatedAt: serverTimestamp() }, { merge: true }); } catch (err) { console.warn(err); }
   try { await setDoc(doc(db, "presence", ME.uid), { status: newStatus, updatedAt: serverTimestamp() }, { merge: true }); } catch (err) { console.warn(err); }
   showToast("Status updated ✓");
 }
@@ -1361,12 +1300,12 @@ function renderOwnProfileInInfoPanel() {
   if (!ME) return;
   resetInfoPanelFields();
 
-  buildAvatarEl(ipAvatar, ME.name, ME.avatar);
+  buildAvatarEl(ipAvatar, ME.name, ME.avatar, true);
   if (ipAvatar) { ipAvatar.style.width = "72px"; ipAvatar.style.height = "72px"; }
 
-  if (ipName)     ipName.textContent     = ME.name;
+  if (ipName) ipName.textContent = ME.name;
   if (ipUsername) ipUsername.textContent = `@${ME.name.toLowerCase().replace(/\s+/g, "")}`;
-  if (ipAbout)    ipAbout.textContent    = ME.status || "Hey there! I'm using NexTalk";
+  if (ipAbout) ipAbout.textContent = ME.status || "Hey there! I'm using NexTalk";
 
   const joinedDate = (() => {
     const p = loadMyProfile(ME.uid);
@@ -1376,76 +1315,65 @@ function renderOwnProfileInInfoPanel() {
   })();
   if (ipJoined) ipJoined.textContent = joinedDate;
 
-  if (ipEmail) renderEditableField(ipEmail, ME.email || "—", "email", async () => {
-    showToast("Email cannot be changed here.", "warning");
-  }, true);
-
+  if (ipEmail) renderEditableField(ipEmail, ME.email || "—", "email", async () => showToast("Email cannot be changed here.", "warning"), true);
   if (ipPhone) renderEditableField(ipPhone, ME.phone || "Add phone number", "phone", async (val) => {
     const p = loadMyProfile(ME.uid);
     if (p) { p.phone = val; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p)); ME.phone = val; }
     showToast("Phone number saved ✓");
-    syncProfileToFirestore().catch(() => {});
+    syncProfileToFirestore().catch(() => { });
   });
-
   if (ipDob) renderEditableField(ipDob, ME.dob ? formatDob(ME.dob) : "Add date of birth", "dob", async (val) => {
     const p = loadMyProfile(ME.uid);
     if (p) { p.dob = val; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p)); ME.dob = val; }
     showToast("Date of birth saved ✓");
-    syncProfileToFirestore().catch(() => {});
+    syncProfileToFirestore().catch(() => { });
   }, false, "date");
 
-  if (ipGender)    renderGenderField(ipGender, ME.gender || "");
+  if (ipGender) renderGenderField(ipGender, ME.gender || "");
   if (ipInterests) renderInterestTags(ipInterests, ME.interests || []);
-  if (ipLocation)  renderLocationField(ipLocation, ME.location || {});
+  if (ipLocation) renderLocationField(ipLocation, ME.location || {});
 
   ipExtraSection?.classList.remove("hidden");
   ipGroupMembersSection?.classList.add("hidden");
 
-  // Re-attach avatar edit overlay after re-render
-  setTimeout(() => initIpAvatarEdit(), 50);
+  // Re-attach avatar overlay after re-render
+  setTimeout(() => initIpAvatarEdit(), 60);
 }
 
 function renderLocationField(el, location) {
   el.innerHTML = "";
   el.style.cssText = "display:flex;align-items:center;gap:6px;";
-
   const display = location?.display || "";
-  const span    = document.createElement("span");
+  const span = document.createElement("span");
   span.style.cssText = "flex:1;color:var(--text);font-size:13px;word-break:break-all;";
   span.innerHTML = display
     ? `<span class="ip-location-chip"><i class="ri-map-pin-2-fill" style="color:var(--primary);margin-right:4px;"></i>${escHtml(display)}</span>`
     : `<span style="color:var(--text-grey)">Add location</span>`;
   el.appendChild(span);
-
   const editBtn = makeIconBtn("ri-edit-line", "Edit location", "");
   editBtn.style.opacity = "0.55";
   el.appendChild(editBtn);
-
   editBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     el.innerHTML = "";
     el.style.flexWrap = "nowrap";
-
-    const input    = document.createElement("input");
-    input.type     = "text";
-    input.value    = display || "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = display || "";
     input.placeholder = "e.g. Dehradun, Uttarakhand";
     input.style.cssText = `flex:1;border:none;border-bottom:1.5px solid var(--primary);background:transparent;font-family:'Work Sans',sans-serif;font-size:13px;color:var(--text);outline:none;padding:2px 4px;min-width:0;`;
-
-    const saveBtn   = makeIconBtn("ri-check-line", "Save",   "var(--primary)");
+    const saveBtn = makeIconBtn("ri-check-line", "Save", "var(--primary)");
     const cancelBtn = makeIconBtn("ri-close-line", "Cancel", "");
     el.append(input, saveBtn, cancelBtn);
     input.focus();
-
     const doSave = async () => {
       const newVal = input.value.trim();
       const p = loadMyProfile(ME.uid);
       if (p) { if (!p.location) p.location = {}; p.location.display = newVal; localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(p)); ME.location = { ...ME.location, display: newVal }; }
       showToast("Location saved ✓");
-      syncProfileToFirestore().catch(() => {});
+      syncProfileToFirestore().catch(() => { });
       renderLocationField(el, ME.location);
     };
-
     saveBtn.addEventListener("click", doSave);
     cancelBtn.addEventListener("click", () => renderLocationField(el, location));
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") doSave(); if (e.key === "Escape") renderLocationField(el, location); });
@@ -1462,10 +1390,7 @@ function renderGenderField(el, gender) {
 
 function renderInterestTags(el, interests) {
   el.innerHTML = "";
-  if (!interests?.length) {
-    el.innerHTML = `<span style="font-size:13px;color:var(--text-grey)">No interests added</span>`;
-    return;
-  }
+  if (!interests?.length) { el.innerHTML = `<span style="font-size:13px;color:var(--text-grey)">No interests added</span>`; return; }
   el.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
   interests.forEach(tag => {
     const chip = document.createElement("span");
@@ -1478,36 +1403,29 @@ function renderInterestTags(el, interests) {
 function renderEditableField(el, value, fieldName, onSave, readonly = false, inputType = "text") {
   el.innerHTML = "";
   el.style.cssText = "display:flex;align-items:center;gap:6px;";
-
   const span = document.createElement("span");
   span.textContent = value || "—";
   span.style.cssText = "flex:1;color:var(--text);font-size:13px;word-break:break-all;";
   el.appendChild(span);
-
   if (readonly) return;
-
   const editBtn = makeIconBtn("ri-edit-line", `Edit ${fieldName}`, "");
   editBtn.style.opacity = "0.55";
   el.appendChild(editBtn);
-
   editBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     el.innerHTML = "";
     el.style.flexWrap = "nowrap";
-
-    const input       = document.createElement("input");
-    input.type        = inputType;
-    input.value       = value.startsWith("Add ") ? "" : (value || "");
+    const input = document.createElement("input");
+    input.type = inputType;
+    input.value = value.startsWith("Add ") ? "" : (value || "");
     input.placeholder = fieldName === "phone" ? "+91 98765 43210" : fieldName === "dob" ? "YYYY-MM-DD" : "";
     input.style.cssText = `flex:1;border:none;border-bottom:1.5px solid var(--primary);background:transparent;font-family:'Work Sans',sans-serif;font-size:13px;color:var(--text);outline:none;padding:2px 4px;min-width:0;`;
-
-    const saveBtn   = makeIconBtn("ri-check-line", "Save",   "var(--primary)");
+    const saveBtn = makeIconBtn("ri-check-line", "Save", "var(--primary)");
     const cancelBtn = makeIconBtn("ri-close-line", "Cancel", "");
     el.append(input, saveBtn, cancelBtn);
     input.focus();
-
     const doSave = async () => {
-      const newVal     = input.value.trim();
+      const newVal = input.value.trim();
       await onSave(newVal);
       const displayVal = fieldName === "dob" && newVal ? formatDob(newVal) : (newVal || value);
       renderEditableField(el, displayVal, fieldName, onSave, readonly, inputType);
@@ -1526,7 +1444,7 @@ function listenPresence() {
 
   presenceUnsub = onSnapshot(collection(db, "presence"), (snap) => {
     snap.docChanges().forEach(change => {
-      const uid  = change.doc.id;
+      const uid = change.doc.id;
       const data = change.doc.data();
 
       if (change.type === "removed") { removePresenceUser(uid); return; }
@@ -1537,6 +1455,17 @@ function listenPresence() {
         online, lastSeen: data.updatedAt || data.lastSeen || null,
       });
 
+      // ✅ Own presence changed from another device/tab — update avatar if needed
+      if (uid === ME?.uid && data.avatar && data.avatar !== ME.avatar) {
+        ME.avatar = data.avatar;
+        const profile = loadMyProfile(ME.uid);
+        if (profile) {
+          profile.avatar = data.avatar;
+          localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
+        }
+        // listenOwnPresence() will also fire, but it guards against double-refresh
+        refreshAllProfileImages();
+      }
       if (uid === ME?.uid && data.status && data.status !== ME.status) {
         ME.status = data.status;
         if (ipAbout && !ipAbout.parentElement?.querySelector(".about-edit-wrap"))
@@ -1544,7 +1473,7 @@ function listenPresence() {
       }
     });
 
-    const allUsers    = getAllPresenceUsers();
+    const allUsers = getAllPresenceUsers();
     const onlineUsers = allUsers.filter(u => u.online);
 
     renderOnlineStrip(onlineUsers);
@@ -1563,8 +1492,7 @@ function listenPresence() {
 
     renderContactsList();
 
-    if (currentViewedUid && vpOnlineBadge) {
-      if (currentViewedUid === ME?.uid) return; // own profile stays "Online"
+    if (currentViewedUid && vpOnlineBadge && currentViewedUid !== ME?.uid) {
       const viewed = presenceUsersMap.get(currentViewedUid);
       if (viewed) {
         vpOnlineBadge.className = `vp-online-badge ${viewed.online ? "online" : "offline"}`;
@@ -1578,7 +1506,7 @@ function updateChatHeaderPresence(user) {
   chPresence.className = `ch-presence ${user.online ? "online" : "offline"}`;
   if (!chStatus.classList.contains("typing")) {
     chStatus.textContent = user.online ? "Online" : "Offline";
-    chStatus.className   = `ch-status ${user.online ? "online-status" : "offline-status"}`;
+    chStatus.className = `ch-status ${user.online ? "online-status" : "offline-status"}`;
   }
 }
 
@@ -1594,7 +1522,7 @@ function initViewProfilePanel() {
 
   vpMsgBtn?.addEventListener("click", () => {
     if (!currentViewedUid || !ME || currentViewedUid === ME.uid) return;
-    const user   = presenceUsersMap.get(currentViewedUid) || { uid: currentViewedUid, name: currentViewedUid, avatar: "", online: false, status: "" };
+    const user = presenceUsersMap.get(currentViewedUid) || { uid: currentViewedUid, name: currentViewedUid, avatar: "", online: false, status: "" };
     const roomId = getRoomId(ME.uid, currentViewedUid);
     closeViewProfile();
     startDmWithUser(roomId, currentViewedUid, user);
@@ -1603,7 +1531,7 @@ function initViewProfilePanel() {
   document.getElementById("vpBlockBtn")?.addEventListener("click", async () => {
     if (!currentViewedUid || currentViewedUid === ME?.uid) return;
     const name = vpName?.textContent || "User";
-    const btn  = document.getElementById("vpBlockBtn");
+    const btn = document.getElementById("vpBlockBtn");
     if (blockedUsers.has(currentViewedUid)) {
       await unblockUser(currentViewedUid, name);
       btn.innerHTML = `<i class="ri-forbid-line"></i> Block User`;
@@ -1612,37 +1540,32 @@ function initViewProfilePanel() {
       if (!confirm(`Block "${name}"?`)) return;
       await blockUser(currentViewedUid, name);
       btn.innerHTML = `<i class="ri-user-received-line"></i> Unblock User`;
-      btn.style.background   = "#f0fff4";
-      btn.style.color        = "#16a34a";
-      btn.style.borderColor  = "#86efac";
+      btn.style.background = "#f0fff4";
+      btn.style.color = "#16a34a";
+      btn.style.borderColor = "#86efac";
     }
   });
 }
 
 async function openViewProfile(uid) {
   if (!uid || uid === ME?.uid) return;
-
   if (currentViewedUid !== uid) {
     currentViewedUid = uid;
     showViewProfileSkeleton();
     await loadViewProfileData(uid);
   }
-
-  // Restore actions that may have been hidden for own profile
-  const vpActions    = viewProfilePanel?.querySelector(".vp-actions");
+  const vpActions = viewProfilePanel?.querySelector(".vp-actions");
   const vpBottomActs = viewProfilePanel?.querySelector(".vp-bottom-actions");
-  if (vpActions)    vpActions.style.display = "";
+  if (vpActions) vpActions.style.display = "";
   if (vpBottomActs) vpBottomActs.style.display = "";
-
   const vpBlockBtn = document.getElementById("vpBlockBtn");
   if (vpBlockBtn) {
     const blocked = blockedUsers.has(uid);
-    vpBlockBtn.innerHTML      = blocked ? `<i class="ri-user-received-line"></i> Unblock User` : `<i class="ri-forbid-line"></i> Block User`;
-    vpBlockBtn.style.background   = blocked ? "#f0fff4" : "";
-    vpBlockBtn.style.color        = blocked ? "#16a34a" : "";
-    vpBlockBtn.style.borderColor  = blocked ? "#86efac" : "";
+    vpBlockBtn.innerHTML = blocked ? `<i class="ri-user-received-line"></i> Unblock User` : `<i class="ri-forbid-line"></i> Block User`;
+    vpBlockBtn.style.background = blocked ? "#f0fff4" : "";
+    vpBlockBtn.style.color = blocked ? "#16a34a" : "";
+    vpBlockBtn.style.borderColor = blocked ? "#86efac" : "";
   }
-
   viewProfilePanel?.classList.add("open");
   viewProfileOverlay?.classList.add("active");
   if (window.innerWidth <= 768) document.body.style.overflow = "hidden";
@@ -1652,39 +1575,28 @@ function closeViewProfile() {
   viewProfilePanel?.classList.remove("open");
   viewProfileOverlay?.classList.remove("active");
   document.body.style.overflow = "";
-  viewProfileUnsub?.();       viewProfileUnsub      = null;
-  viewProfileMediaUnsub?.();  viewProfileMediaUnsub = null;
+  viewProfileUnsub?.(); viewProfileUnsub = null;
+  viewProfileMediaUnsub?.(); viewProfileMediaUnsub = null;
   currentViewedUid = null;
-
-  // Restore hidden elements
-  const vpActions    = viewProfilePanel?.querySelector(".vp-actions");
+  const vpActions = viewProfilePanel?.querySelector(".vp-actions");
   const vpBottomActs = viewProfilePanel?.querySelector(".vp-bottom-actions");
-  if (vpActions)    vpActions.style.display = "";
+  if (vpActions) vpActions.style.display = "";
   if (vpBottomActs) vpBottomActs.style.display = "";
 }
 
-function showViewProfileSkeleton() {
-  vpSkeleton?.classList.remove("hidden");
-  vpContent?.classList.add("hidden");
-}
-
-function hideViewProfileSkeleton() {
-  vpSkeleton?.classList.add("hidden");
-  vpContent?.classList.remove("hidden");
-}
+function showViewProfileSkeleton() { vpSkeleton?.classList.remove("hidden"); vpContent?.classList.add("hidden"); }
+function hideViewProfileSkeleton() { vpSkeleton?.classList.add("hidden"); vpContent?.classList.remove("hidden"); }
 
 async function loadViewProfileData(uid) {
   viewProfileUnsub?.();
   viewProfileMediaUnsub?.();
 
   let cachedProfile = null;
-  try {
-    const snap = await getDoc(doc(db, "users", uid));
-    if (snap.exists()) cachedProfile = snap.data();
-  } catch (err) { console.warn("vp users fetch:", err); }
+  try { const snap = await getDoc(doc(db, "users", uid)); if (snap.exists()) cachedProfile = snap.data(); }
+  catch (err) { console.warn("vp users fetch:", err); }
 
-  const presUnsub  = onSnapshot(doc(db, "presence", uid), (presSnap) => {
-    const pres    = presSnap.exists() ? presSnap.data() : null;
+  const presUnsub = onSnapshot(doc(db, "presence", uid), (presSnap) => {
+    const pres = presSnap.exists() ? presSnap.data() : null;
     const mapUser = presenceUsersMap.get(uid);
     renderViewProfileUI(uid, buildProfileData(uid, cachedProfile, pres, mapUser));
   });
@@ -1703,15 +1615,15 @@ async function loadViewProfileData(uid) {
 function buildProfileData(uid, userDoc, presDoc, mapUser) {
   const isOnline = presDoc ? isTrulyOnline(presDoc) : (mapUser?.online ?? false);
   return {
-    name:      userDoc?.name      || presDoc?.name   || mapUser?.name   || uid,
-    avatar:    userDoc?.avatar    || presDoc?.avatar  || mapUser?.avatar || "",
-    status:    userDoc?.status    || presDoc?.status  || mapUser?.status || "Hey there! I'm using NexTalk",
-    online:    isOnline,
-    email:     userDoc?.email     || "",
-    phone:     userDoc?.phone     || "",
-    dob:       userDoc?.dob       || "",
-    gender:    userDoc?.gender    || "",
-    location:  userDoc?.location  || {},
+    name: userDoc?.name || presDoc?.name || mapUser?.name || uid,
+    avatar: userDoc?.avatar || presDoc?.avatar || mapUser?.avatar || "",
+    status: userDoc?.status || presDoc?.status || mapUser?.status || "Hey there! I'm using NexTalk",
+    online: isOnline,
+    email: userDoc?.email || "",
+    phone: userDoc?.phone || "",
+    dob: userDoc?.dob || "",
+    gender: userDoc?.gender || "",
+    location: userDoc?.location || {},
     interests: userDoc?.interests || [],
     createdAt: userDoc?.createdAt || presDoc?.createdAt || null,
   };
@@ -1719,35 +1631,23 @@ function buildProfileData(uid, userDoc, presDoc, mapUser) {
 
 function renderViewProfileUI(uid, p) {
   hideViewProfileSkeleton();
-
-  if (vpAvatar) {
-    vpAvatar.style.background = colorFor(p.name);
-    vpAvatar.innerHTML = p.avatar
-      ? `<img src="${escHtml(p.avatar)}" alt="${escHtml(p.name)}" />`
-      : `<span>${(p.name || "?").charAt(0).toUpperCase()}</span>`;
-  }
-
-  if (vpName)     vpName.textContent     = p.name || uid;
+  if (vpAvatar) buildAvatarEl(vpAvatar, p.name, p.avatar, true);
+  if (vpName) vpName.textContent = p.name || uid;
   if (vpUsername) vpUsername.textContent = `@${(p.name || uid).toLowerCase().replace(/\s+/g, "")}`;
-
   if (vpOnlineBadge) {
     vpOnlineBadge.className = `vp-online-badge ${p.online ? "online" : "offline"}`;
     if (vpOnlineLabel) vpOnlineLabel.textContent = p.online ? "Online" : "Offline";
   }
-
   if (vpAbout) vpAbout.textContent = p.status || "Hey there! I'm using NexTalk";
-
-  setVpText(vpEmail,  p.email || "—");
-  setVpText(vpPhone,  p.phone || "—");
-  setVpText(vpDob,    p.dob ? formatDob(p.dob) : "—");
-
+  setVpText(vpEmail, p.email || "—");
+  setVpText(vpPhone, p.phone || "—");
+  setVpText(vpDob, p.dob ? formatDob(p.dob) : "—");
   if (vpGender) {
     vpGender.innerHTML = (p.gender && p.gender !== "Not specified")
       ? `${genderIcon(p.gender)} <span style="font-size:13px;color:var(--text);margin-left:4px;">${escHtml(p.gender)}</span>`
       : "—";
     if (!p.gender || p.gender === "Not specified") vpGender.style.color = "var(--text-grey)";
   }
-
   if (vpLocation) {
     const display = p.location?.display || "";
     vpLocation.innerHTML = display
@@ -1755,14 +1655,13 @@ function renderViewProfileUI(uid, p) {
       : "—";
     if (!display) vpLocation.style.color = "var(--text-grey)";
   }
-
   if (vpInterests) {
     vpInterests.innerHTML = "";
     if (p.interests?.length) {
       vpInterests.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
       p.interests.forEach(tag => {
         const chip = document.createElement("span");
-        chip.className   = "vp-interest-chip";
+        chip.className = "vp-interest-chip";
         chip.textContent = tag;
         vpInterests.appendChild(chip);
       });
@@ -1770,11 +1669,10 @@ function renderViewProfileUI(uid, p) {
       vpInterests.innerHTML = `<span style="font-size:13px;color:var(--text-grey)">No interests added</span>`;
     }
   }
-
   if (vpJoined) {
     vpJoined.textContent = p.createdAt
       ? (p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt))
-          .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+        .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
       : "—";
   }
 }
@@ -1790,19 +1688,14 @@ async function loadViewProfileMedia(uid) {
   const roomId = getRoomId(ME.uid, uid);
   vpMediaGrid.innerHTML = `<div class="vp-media-loading"><div class="vp-skeleton-block" style="height:72px;border-radius:10px;"></div><div class="vp-skeleton-block" style="height:72px;border-radius:10px;"></div><div class="vp-skeleton-block" style="height:72px;border-radius:10px;"></div></div>`;
   if (vpMediaCount) vpMediaCount.textContent = "";
-
   try {
     const q = query(collection(db, "rooms", roomId, "messages"), where("type", "==", "image"), orderBy("createdAt", "desc"), limit(9));
     viewProfileMediaUnsub = onSnapshot(q, (snap) => {
       const images = snap.docs.map(d => d.data()).filter(d => !d.deleted && (d.fileUrl || d.fileData));
-      if (!images.length) {
-        vpMediaGrid.innerHTML = `<div class="vp-media-empty"><i class="ri-image-line"></i><span>No shared media yet</span></div>`;
-        if (vpMediaCount) vpMediaCount.textContent = "";
-        return;
-      }
+      if (!images.length) { vpMediaGrid.innerHTML = `<div class="vp-media-empty"><i class="ri-image-line"></i><span>No shared media yet</span></div>`; if (vpMediaCount) vpMediaCount.textContent = ""; return; }
       if (vpMediaCount) vpMediaCount.textContent = `${images.length} photo${images.length !== 1 ? "s" : ""}`;
       vpMediaGrid.innerHTML = images.map(img => {
-        const src  = escHtml(img.fileUrl || img.fileData || "");
+        const src = escHtml(img.fileUrl || img.fileData || "");
         const name = escHtml(img.fileName || "image.png");
         return `<a class="vp-media-thumb" href="${src}" target="_blank" title="${name}"><img src="${src}" alt="${name}" loading="lazy" onerror="this.parentElement.style.display='none'" /></a>`;
       }).join("");
@@ -1814,9 +1707,7 @@ async function loadViewProfileMedia(uid) {
 
 mdViewProfile?.addEventListener("click", () => {
   closeMoreDropdown();
-  if (!activeRoomId || activeRoomId === ROOM_GENERAL || activeRoomMeta.isGroup) {
-    showToast("View Profile is only available for direct messages.", "warning"); return;
-  }
+  if (!activeRoomId || activeRoomId === ROOM_GENERAL || activeRoomMeta.isGroup) { showToast("View Profile is only available for direct messages.", "warning"); return; }
   const otherUid = activeRoomId.split("__").find(p => p !== ME?.uid);
   if (otherUid) openViewProfile(otherUid);
 });
@@ -1832,14 +1723,12 @@ chAvatar?.addEventListener("click", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 function listenGroups() {
   groupsUnsub = onSnapshot(collection(db, "groups"), (snap) => {
-    allGroups = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(g => g.members?.includes(ME?.uid));
+    allGroups = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.members?.includes(ME?.uid));
     renderGroupsList();
   });
 }
 
-function openGroupsPanel()  { groupsPanel?.classList.add("open"); groupsPanelOverlay?.classList.add("active"); renderGroupsList(); }
+function openGroupsPanel() { groupsPanel?.classList.add("open"); groupsPanelOverlay?.classList.add("active"); renderGroupsList(); }
 function closeGroupsPanel() { groupsPanel?.classList.remove("open"); groupsPanelOverlay?.classList.remove("active"); }
 
 function renderGroupsList() {
@@ -1849,7 +1738,7 @@ function renderGroupsList() {
     return;
   }
   groupsList.innerHTML = allGroups.map(g => {
-    const isAdmin  = g.adminUid === ME?.uid;
+    const isAdmin = g.adminUid === ME?.uid;
     const isActive = activeRoomId === `group__${g.id}`;
     return `
       <li class="group-item ${isActive ? "active" : ""}" data-id="${g.id}">
@@ -1927,7 +1816,7 @@ function renderSelectedMembersChips() {
   if (!selectedMembersWrap) return;
   selectedMembersWrap.innerHTML = [...groupSelectedMembers.values()].map(u => {
     const color = colorFor(u.name);
-    const av    = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : u.name.charAt(0).toUpperCase();
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : u.name.charAt(0).toUpperCase();
     return `<div class="member-chip" data-uid="${u.uid}"><div class="chip-av" style="background:${color};">${av}</div><span>${escHtml(u.name)}</span><span class="chip-remove" title="Remove">✕</span></div>`;
   }).join("");
   selectedMembersWrap.querySelectorAll(".member-chip").forEach(el => {
@@ -1975,16 +1864,16 @@ function renderGsMembers(grp) {
   const members = grp.members || [];
   if (!members.length) { gsGroupMembersList.innerHTML = `<li class="modal-empty">No members</li>`; return; }
   gsGroupMembersList.innerHTML = members.map(uid => {
-    const u       = presenceUsersMap.get(uid) || { uid, name: uid, avatar: "", online: false };
-    const color   = colorFor(u.name);
-    const av      = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
+    const u = presenceUsersMap.get(uid) || { uid, name: uid, avatar: "", online: false };
+    const color = colorFor(u.name);
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
     const isAdmin = uid === grp.adminUid;
     const canKick = !isAdmin && uid !== ME?.uid;
     return `
       <li class="modal-user-item" data-uid="${uid}" style="cursor:default;">
         <div class="modal-user-av" style="background:${color};">${av}<div class="modal-online-dot ${u.online ? "online" : "offline"}"></div></div>
         <div class="modal-user-info">
-          <div class="modal-user-name">${escHtml(u.name)}${isAdmin ? ' <span style="font-size:10px;color:var(--primary);font-weight:700;">(Admin)</span>' : ""}</div>
+          <div class="modal-user-name">${escHtml(u.name)}${isAdmin ? ` <span style="font-size:10px;color:var(--primary);font-weight:700;">(Admin)</span>` : ""}</div>
           <div class="modal-user-status">${u.online ? "Online" : "Offline"}</div>
         </div>
         ${canKick ? `<button class="icon-btn gs-kick-btn" data-uid="${uid}" title="Remove" style="color:var(--error);"><i class="ri-user-unfollow-line"></i></button>` : ""}
@@ -2004,7 +1893,7 @@ function renderGsAddMembers(q) {
   const grp = activeRoomMeta.groupData;
   if (!grp) return;
   const existing = new Set(grp.members || []);
-  const users    = getAllPresenceUsers().filter(u => u.uid !== ME?.uid && !existing.has(u.uid) && (!q || u.name.toLowerCase().includes(q)));
+  const users = getAllPresenceUsers().filter(u => u.uid !== ME?.uid && !existing.has(u.uid) && (!q || u.name.toLowerCase().includes(q)));
   if (!users.length) { gsAddMemberList.innerHTML = `<li class="modal-empty">No users to add</li>`; return; }
   gsAddMemberList.innerHTML = users.map(u => buildModalUserItem(u, true)).join("");
   gsAddMemberList.querySelectorAll(".modal-user-item").forEach(el => {
@@ -2023,7 +1912,7 @@ function renderGsAddMembers(q) {
 
 function buildModalUserItem(u, showAdd = false) {
   const color = colorFor(u.name);
-  const av    = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
+  const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
   const extra = showAdd ? `<button class="icon-btn" style="color:var(--primary);"><i class="ri-user-add-line"></i></button>` : `<div class="modal-check"><i class="ri-check-line"></i></div>`;
   return `
     <li class="modal-user-item" data-uid="${u.uid}">
@@ -2038,7 +1927,7 @@ function buildModalUserItem(u, showAdd = false) {
 
 gsAddMemberSearch?.addEventListener("input", () => renderGsAddMembers(gsAddMemberSearch.value.toLowerCase()));
 groupSettingsModalClose?.addEventListener("click", () => groupSettingsModal?.classList.add("hidden"));
-groupSettingsCancel?.addEventListener("click",     () => groupSettingsModal?.classList.add("hidden"));
+groupSettingsCancel?.addEventListener("click", () => groupSettingsModal?.classList.add("hidden"));
 groupSettingsModal?.addEventListener("click", (e) => { if (e.target === groupSettingsModal) groupSettingsModal.classList.add("hidden"); });
 
 groupSettingsSave?.addEventListener("click", async () => {
@@ -2072,7 +1961,7 @@ gsDeleteGroup?.addEventListener("click", async () => {
 
 async function kickMemberFromGroup(groupId, uid) {
   try {
-    const ref  = doc(db, "groups", groupId);
+    const ref = doc(db, "groups", groupId);
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
     const newMembers = (snap.data().members || []).filter(m => m !== uid);
@@ -2088,10 +1977,8 @@ async function kickMemberFromGroup(groupId, uid) {
 // PIN HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 function loadPinnedChats(uid) {
-  try {
-    const raw = localStorage.getItem(`nt_pinned_${uid}`);
-    return raw ? new Set(JSON.parse(raw)) : new Set([ROOM_GENERAL]);
-  } catch { return new Set([ROOM_GENERAL]); }
+  try { const raw = localStorage.getItem(`nt_pinned_${uid}`); return raw ? new Set(JSON.parse(raw)) : new Set([ROOM_GENERAL]); }
+  catch { return new Set([ROOM_GENERAL]); }
 }
 
 function savePinnedChats() {
@@ -2101,7 +1988,7 @@ function savePinnedChats() {
 
 function togglePin(id) {
   if (pinnedChats.has(id)) { pinnedChats.delete(id); showToast("Chat unpinned"); }
-  else                     { pinnedChats.add(id);    showToast("Chat pinned 📌"); }
+  else { pinnedChats.add(id); showToast("Chat pinned 📌"); }
   savePinnedChats();
   renderContactsList();
   updatePinMenuLabel();
@@ -2110,9 +1997,7 @@ function togglePin(id) {
 function updatePinMenuLabel() {
   if (!mdPinChat) return;
   const isPinned = activeRoomId && pinnedChats.has(activeRoomId);
-  mdPinChat.innerHTML = isPinned
-    ? `<i class="ri-pushpin-fill"></i> Unpin Chat`
-    : `<i class="ri-pushpin-line"></i> Pin Chat`;
+  mdPinChat.innerHTML = isPinned ? `<i class="ri-pushpin-fill"></i> Unpin Chat` : `<i class="ri-pushpin-line"></i> Pin Chat`;
   mdPinChat.classList.toggle("pinned-active", !!isPinned);
 }
 
@@ -2124,7 +2009,7 @@ function renderContactsList() {
   pinnedList.innerHTML = "";
 
   const generalUnread = unreadCounts.get(ROOM_GENERAL) || 0;
-  const generalLi     = document.createElement("li");
+  const generalLi = document.createElement("li");
   generalLi.innerHTML = buildChatItemHtml({
     id: ROOM_GENERAL, name: getGeneralChatName(), avatar: "",
     preview: "Public room — everyone can chat", time: "", unread: generalUnread, online: true, isPinned: true,
@@ -2132,12 +2017,7 @@ function renderContactsList() {
   const generalEl = generalLi.firstElementChild;
   if (generalEl) {
     pinnedList.appendChild(generalEl);
-    generalEl.addEventListener("click", () => {
-      markRoomRead(ROOM_GENERAL);
-      openRoom(ROOM_GENERAL, getGeneralChatName(), null, true, null, false);
-      highlightContact(ROOM_GENERAL);
-      mobileChatOpen();
-    });
+    generalEl.addEventListener("click", () => { markRoomRead(ROOM_GENERAL); openRoom(ROOM_GENERAL, getGeneralChatName(), null, true, null, false); highlightContact(ROOM_GENERAL); mobileChatOpen(); });
   }
 
   getAllPresenceUsers()
@@ -2145,30 +2025,21 @@ function renderContactsList() {
     .forEach(u => {
       const roomId = getRoomId(ME.uid, u.uid);
       const unread = unreadCounts.get(roomId) || 0;
-      const li     = document.createElement("li");
-      li.innerHTML = buildChatItemHtml({
-        id: u.uid, name: u.name, avatar: u.avatar,
-        preview: u.status || "Say hello!", time: "", unread, online: u.online, isPinned: true,
-      }, activeRoomId === roomId);
+      const li = document.createElement("li");
+      li.innerHTML = buildChatItemHtml({ id: u.uid, name: u.name, avatar: u.avatar, preview: u.status || "Say hello!", time: "", unread, online: u.online, isPinned: true }, activeRoomId === roomId);
       const el = li.firstElementChild;
       if (el) {
         pinnedList.appendChild(el);
-        el.addEventListener("click", () => {
-          markRoomRead(roomId);
-          openRoom(roomId, u.name, u.avatar, false, u, false);
-          highlightContact(u.uid);
-          mobileChatOpen();
-        });
+        el.addEventListener("click", () => { markRoomRead(roomId); openRoom(roomId, u.name, u.avatar, false, u, false); highlightContact(u.uid); mobileChatOpen(); });
       }
     });
 }
 
 function buildChatItemHtml({ id, name, avatar, preview, time, unread, online, isPinned }, active = false) {
-  const color     = colorFor(name);
+  const color = colorFor(name);
   const avatarHtml = avatar
-    ? `<img src="${escHtml(avatar)}" alt="${escHtml(name)}" />`
+    ? `<img src="${escHtml(avatar)}" alt="${escHtml(name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" />`
     : `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-weight:700;font-size:17px;color:white;">${escHtml(name.charAt(0).toUpperCase())}</span>`;
-
   return `
     <li class="chat-item ${active ? "active" : ""}" data-id="${id}">
       <div class="ci-avatar-wrap">
@@ -2180,7 +2051,7 @@ function buildChatItemHtml({ id, name, avatar, preview, time, unread, online, is
         <div class="ci-preview">${escHtml(preview)}</div>
       </div>
       <div class="ci-meta">
-        ${time   ? `<span class="ci-time">${escHtml(time)}</span>` : ""}
+        ${time ? `<span class="ci-time">${escHtml(time)}</span>` : ""}
         ${unread ? `<span class="ci-unread">${unread > 99 ? "99+" : unread}</span>` : ""}
       </div>
     </li>`;
@@ -2195,13 +2066,10 @@ function highlightContact(id) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderOnlineStrip(users) {
   if (!onlineStrip) return;
-  if (!users.length) {
-    onlineStrip.innerHTML = `<span style="font-size:12px;color:var(--text-grey);">No one online yet</span>`;
-    return;
-  }
+  if (!users.length) { onlineStrip.innerHTML = `<span style="font-size:12px;color:var(--text-grey);">No one online yet</span>`; return; }
   onlineStrip.innerHTML = users.map(u => {
     const color = colorFor(u.name);
-    const av    = u.avatar
+    const av = u.avatar
       ? `<img src="${escHtml(u.avatar)}" alt="${escHtml(u.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
       : u.name.charAt(0).toUpperCase();
     return `
@@ -2245,20 +2113,17 @@ function renderAllUsersPanel(presenceUsers) {
 
   allChatList.innerHTML = allUsers.map(u => {
     const isPinned = pinnedChats.has(u.uid);
-    const dmRoom   = getDmRoom(u.uid);
-    const roomId   = getRoomId(ME?.uid, u.uid);
-    const unread   = unreadCounts.get(roomId) || 0;
-    const preview  = dmRoom?.lastText || u.status || "Tap to start chatting";
-    const timeStr  = dmRoom?.lastTs ? formatChatTime(dmRoom.lastTs) : "";
-    return buildChatItemHtml({
-      id: u.uid, name: u.name, avatar: u.avatar,
-      preview, time: timeStr, unread, online: u.online, isPinned,
-    }, activeRoomId === roomId);
+    const dmRoom = getDmRoom(u.uid);
+    const roomId = getRoomId(ME?.uid, u.uid);
+    const unread = unreadCounts.get(roomId) || 0;
+    const preview = dmRoom?.lastText || u.status || "Tap to start chatting";
+    const timeStr = dmRoom?.lastTs ? formatChatTime(dmRoom.lastTs) : "";
+    return buildChatItemHtml({ id: u.uid, name: u.name, avatar: u.avatar, preview, time: timeStr, unread, online: u.online, isPinned }, activeRoomId === roomId);
   }).join("");
 
   allChatList.querySelectorAll(".chat-item").forEach(el => {
     el.addEventListener("click", () => {
-      const uid  = el.dataset.id;
+      const uid = el.dataset.id;
       const user = usersMap.get(uid);
       if (!user) return;
       const roomId = getRoomId(ME.uid, uid);
@@ -2283,34 +2148,34 @@ async function startDmWithUser(roomId, otherUid, user) {
 // OPEN ROOM
 // ═══════════════════════════════════════════════════════════════════════════════
 function openRoom(roomId, name, avatar, isPublic, targetUser = null, isGroup = false, groupData = null) {
-  activeRoomId   = roomId;
+  activeRoomId = roomId;
   activeRoomMeta = { name, isPublic, isGroup, groupData };
 
   chatEmpty.classList.add("hidden");
   chatView.classList.remove("hidden");
 
   buildAvatarEl(chAvatar, name, avatar || "");
-  chAvatar.style.width  = "42px";
+  chAvatar.style.width = "42px";
   chAvatar.style.height = "42px";
-  chName.textContent    = name;
+  chName.textContent = name;
 
-  const canViewProfile  = !isPublic && !isGroup;
+  const canViewProfile = !isPublic && !isGroup;
   chAvatar.style.cursor = canViewProfile ? "pointer" : "default";
-  chAvatar.title        = canViewProfile ? "View Profile" : "";
+  chAvatar.title = canViewProfile ? "View Profile" : "";
 
   if (isPublic) {
     chStatus.textContent = "Public Room · All users";
-    chStatus.className   = "ch-status";
+    chStatus.className = "ch-status";
     chPresence.className = "ch-presence online";
   } else if (isGroup) {
     chStatus.textContent = `${groupData?.members?.length || 0} members`;
-    chStatus.className   = "ch-status";
+    chStatus.className = "ch-status";
     chPresence.className = "ch-presence online";
     groupSettingsBtn?.classList.toggle("hidden", groupData?.adminUid !== ME?.uid);
   } else {
-    const online         = targetUser?.online ?? false;
+    const online = targetUser?.online ?? false;
     chStatus.textContent = online ? "Online" : "Offline";
-    chStatus.className   = `ch-status ${online ? "online-status" : "offline-status"}`;
+    chStatus.className = `ch-status ${online ? "online-status" : "offline-status"}`;
     chPresence.className = `ch-presence ${online ? "online" : "offline"}`;
     groupSettingsBtn?.classList.add("hidden");
   }
@@ -2341,8 +2206,8 @@ function openRoom(roomId, name, avatar, isPublic, targetUser = null, isGroup = f
 // ═══════════════════════════════════════════════════════════════════════════════
 // MORE MENU
 // ═══════════════════════════════════════════════════════════════════════════════
-function openMoreDropdown()  { moreDropdown?.classList.remove("hidden"); moreDropdownOpen = true; updatePinMenuLabel(); updateBlockMenuLabels(); }
-function closeMoreDropdown() { moreDropdown?.classList.add("hidden");    moreDropdownOpen = false; }
+function openMoreDropdown() { moreDropdown?.classList.remove("hidden"); moreDropdownOpen = true; updatePinMenuLabel(); updateBlockMenuLabels(); }
+function closeMoreDropdown() { moreDropdown?.classList.add("hidden"); moreDropdownOpen = false; }
 
 moreMenuBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -2355,8 +2220,7 @@ mdSearch?.addEventListener("click", () => { closeMoreDropdown(); chatSearchBar.c
 mdPinChat?.addEventListener("click", () => {
   closeMoreDropdown();
   if (!activeRoomId) return;
-  const pinId = activeRoomId === ROOM_GENERAL
-    ? ROOM_GENERAL
+  const pinId = activeRoomId === ROOM_GENERAL ? ROOM_GENERAL
     : activeRoomId.includes("__") ? (activeRoomId.split("__").find(p => p !== ME.uid) || activeRoomId) : activeRoomId;
   togglePin(pinId);
 });
@@ -2384,18 +2248,15 @@ mdRenameChat?.addEventListener("click", () => {
 mdClearChat?.addEventListener("click", async () => {
   closeMoreDropdown();
   if (!activeRoomId || !confirm("Clear all messages in this chat?")) return;
-  try {
-    const snap = await getDocs(collection(db, "rooms", activeRoomId, "messages"));
-    await Promise.all(snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true, fileData: null })));
-    showToast("Chat cleared");
-  } catch { showToast("Failed to clear chat", "error"); }
+  try { const snap = await getDocs(collection(db, "rooms", activeRoomId, "messages")); await Promise.all(snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true, fileData: null }))); showToast("Chat cleared"); }
+  catch { showToast("Failed to clear chat", "error"); }
 });
 
 mdDeleteChat?.addEventListener("click", async () => {
   closeMoreDropdown();
   if (!activeRoomId || !confirm("Delete this entire chat? Cannot be undone.")) return;
   try {
-    const snap  = await getDocs(collection(db, "rooms", activeRoomId, "messages"));
+    const snap = await getDocs(collection(db, "rooms", activeRoomId, "messages"));
     await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
     const pinId = activeRoomId === ROOM_GENERAL ? ROOM_GENERAL : activeRoomId.split("__").find(p => p !== ME.uid);
     pinnedChats.delete(pinId);
@@ -2425,9 +2286,9 @@ mdAddFav?.addEventListener("click", () => {
   }
 });
 
-editNickClose?.addEventListener("click",   () => editNickModal.classList.add("hidden"));
-editNickCancel?.addEventListener("click",  () => editNickModal.classList.add("hidden"));
-editNickModal?.addEventListener("click",   (e) => { if (e.target === editNickModal) editNickModal.classList.add("hidden"); });
+editNickClose?.addEventListener("click", () => editNickModal.classList.add("hidden"));
+editNickCancel?.addEventListener("click", () => editNickModal.classList.add("hidden"));
+editNickModal?.addEventListener("click", (e) => { if (e.target === editNickModal) editNickModal.classList.add("hidden"); });
 
 editNickSave?.addEventListener("click", () => {
   const nick = editNickInput.value.trim();
@@ -2461,9 +2322,9 @@ function exitSelectMode() {
 
 function handleSelectClick(e) {
   const row = e.currentTarget;
-  const id  = row.dataset.id;
+  const id = row.dataset.id;
   if (selectedMsgIds.has(id)) { selectedMsgIds.delete(id); row.classList.remove("msg-selected"); }
-  else                        { selectedMsgIds.add(id);    row.classList.add("msg-selected");    }
+  else { selectedMsgIds.add(id); row.classList.add("msg-selected"); }
   selectCount.textContent = `${selectedMsgIds.size} selected`;
 }
 
@@ -2471,7 +2332,7 @@ selectCancel?.addEventListener("click", exitSelectMode);
 selectDelete?.addEventListener("click", async () => {
   if (!selectedMsgIds.size || !confirm(`Delete ${selectedMsgIds.size} message(s)?`)) return;
   for (const id of selectedMsgIds) {
-    try { await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null }); } catch (_) {}
+    try { await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null }); } catch (_) { }
   }
   showToast(`${selectedMsgIds.size} message(s) deleted`);
   exitSelectMode();
@@ -2495,14 +2356,9 @@ function listenMessages(roomId) {
       if (change.type === "added") {
         renderMessage(data, change.doc.id);
         updateDmRoomPreview(roomId, data);
-
         if (data.uid !== ME?.uid && data.uid !== "system" && !data.deleted) {
           const isActiveRoom = activeRoomId === roomId && document.hasFocus();
-          if (!isActiveRoom) {
-            incrementUnread(roomId);
-            renderContactsList();
-            renderAllUsersPanel(getAllPresenceUsers());
-          }
+          if (!isActiveRoom) { incrementUnread(roomId); renderContactsList(); renderAllUsersPanel(getAllPresenceUsers()); }
         }
       } else if (change.type === "modified") {
         updateRenderedMessage(change.doc.data(), change.doc.id);
@@ -2516,23 +2372,22 @@ function listenMessages(roomId) {
 
 function updateDmRoomPreview(roomId, data) {
   if (!data || data.uid === "system" || data.deleted) return;
-  const parts    = roomId.split("__");
+  const parts = roomId.split("__");
   const otherUid = parts.find(p => p !== ME?.uid);
   if (!otherUid) return;
-
-  const lastText = data.type === "image"  ? "📷 Image"
-                 : data.type === "file"   ? `📎 ${data.fileName || "File"}`
-                 : data.type === "sticker"? data.text
-                 : data.type === "voice"  ? "🎤 Voice message"
-                 : (data.text || "");
-  const lastTs   = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+  const lastText = data.type === "image" ? "📷 Image"
+    : data.type === "file" ? `📎 ${data.fileName || "File"}`
+      : data.type === "sticker" ? data.text
+        : data.type === "voice" ? "🎤 Voice message"
+          : (data.text || "");
+  const lastTs = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
   upsertDmRoom(otherUid, { lastText, lastTs });
 }
 
 // ─── Render one message ───────────────────────────────────────────────────────
 function renderMessage(data, id) {
-  const ts      = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-  const isMine  = data.uid === ME?.uid;
+  const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+  const isMine = data.uid === ME?.uid;
   const timeStr = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const dateStr = ts.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
@@ -2545,7 +2400,7 @@ function renderMessage(data, id) {
   }
 
   if (data.type === "sticker") {
-    const row   = document.createElement("div");
+    const row = document.createElement("div");
     row.className = `msg-row ${isMine ? "sent" : "received"}`;
     row.dataset.id = id;
     const color = colorFor(data.name || "?");
@@ -2557,12 +2412,12 @@ function renderMessage(data, id) {
     return;
   }
 
-  const row   = document.createElement("div");
+  const row = document.createElement("div");
   row.className = `msg-row ${isMine ? "sent" : "received"}`;
   row.dataset.id = id;
 
-  const color   = colorFor(data.name || "?");
-  const avHtml  = data.avatar ? `<img src="${escHtml(data.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : (data.name || "?").charAt(0).toUpperCase();
+  const color = colorFor(data.name || "?");
+  const avHtml = data.avatar ? `<img src="${escHtml(data.avatar)}" style="width:100%;height:100%;object-fit:cover;" />` : (data.name || "?").charAt(0).toUpperCase();
   const canEdit = isMine && data.type === "text" && !data.deleted && !data.edited;
 
   const actionsHtml = isMine && !data.deleted ? `
@@ -2585,14 +2440,13 @@ function renderMessage(data, id) {
 }
 
 function buildBubbleContent(data, timeStr, isMine) {
-  const check       = isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : "";
+  const check = isMine ? ` <i class="ri-check-double-line" style="font-size:11px;"></i>` : "";
   const editedLabel = data.edited ? `<span class="msg-edited">(edited)</span>` : "";
 
-  if (data.deleted)
-    return `<span>🚫 This message was deleted</span><div class="msg-meta">${timeStr}</div>`;
+  if (data.deleted) return `<span>🚫 This message was deleted</span><div class="msg-meta">${timeStr}</div>`;
 
   if (data.type === "image") {
-    const src  = escHtml(data.fileUrl || data.fileData || "");
+    const src = escHtml(data.fileUrl || data.fileData || "");
     const name = escHtml(data.fileName || "image.png");
     if (!src) return `<span>🖼️ Image unavailable</span><div class="msg-meta">${timeStr}</div>`;
     return `
@@ -2604,7 +2458,7 @@ function buildBubbleContent(data, timeStr, isMine) {
   }
 
   if (data.type === "file") {
-    const src  = escHtml(data.fileUrl || data.fileData || "");
+    const src = escHtml(data.fileUrl || data.fileData || "");
     const icon = getFileIcon(data.fileName || "");
     const size = formatFileSize(data.fileSize || 0);
     if (!src) return `<span>📎 File unavailable</span><div class="msg-meta">${timeStr}</div>`;
@@ -2621,13 +2475,13 @@ function buildBubbleContent(data, timeStr, isMine) {
   }
 
   if (data.type === "voice") {
-    const src      = escHtml(data.fileUrl || "");
+    const src = escHtml(data.fileUrl || "");
     const duration = escHtml(data.duration || "0:00");
     if (!src) return `<span>🎤 Voice message unavailable</span><div class="msg-meta">${timeStr}</div>`;
-    const btnBg    = isMine ? "rgba(255,255,255,0.25)" : "var(--primary-xlight)";
+    const btnBg = isMine ? "rgba(255,255,255,0.25)" : "var(--primary-xlight)";
     const btnColor = isMine ? "#fff" : "var(--primary)";
-    const barBg    = isMine ? "rgba(255,255,255,0.3)" : "var(--border)";
-    const fillBg   = isMine ? "#fff" : "var(--primary)";
+    const barBg = isMine ? "rgba(255,255,255,0.3)" : "var(--border)";
+    const fillBg = isMine ? "#fff" : "var(--primary)";
     return `
       <div class="msg-voice" style="display:flex;align-items:center;gap:10px;min-width:180px;max-width:260px;">
         <button class="voice-play-btn" data-src="${src}" style="width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;background:${btnBg};color:${btnColor};transition:background .15s;">
@@ -2649,11 +2503,9 @@ function buildBubbleContent(data, timeStr, isMine) {
 function bindMsgActions(row, data, id) {
   const playBtn = row.querySelector(".voice-play-btn");
   if (playBtn) {
-    let audio   = null;
-    let playing = false;
-    const fill  = row.querySelector(".voice-progress-fill");
-    const bar   = row.querySelector(".voice-progress-bar");
-
+    let audio = null, playing = false;
+    const fill = row.querySelector(".voice-progress-fill");
+    const bar = row.querySelector(".voice-progress-bar");
     playBtn.addEventListener("click", () => {
       if (!audio) {
         audio = new Audio(playBtn.dataset.src);
@@ -2661,7 +2513,7 @@ function bindMsgActions(row, data, id) {
         audio.addEventListener("ended", () => { playing = false; playBtn.innerHTML = `<i class="ri-play-fill"></i>`; if (fill) fill.style.width = "0%"; });
       }
       if (playing) { audio.pause(); playing = false; playBtn.innerHTML = `<i class="ri-play-fill"></i>`; }
-      else         { audio.play();  playing = true;  playBtn.innerHTML = `<i class="ri-pause-fill"></i>`; }
+      else { audio.play(); playing = true; playBtn.innerHTML = `<i class="ri-pause-fill"></i>`; }
     });
     bar?.addEventListener("click", (e) => {
       if (!audio?.duration) return;
@@ -2673,21 +2525,18 @@ function bindMsgActions(row, data, id) {
   row.querySelectorAll(".msg-act-btn").forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (btn.dataset.action === "edit") {
-        if (data.edited) { showToast("Messages can only be edited once", "warning"); return; }
-        openEditModal(id, data.text);
-      }
+      if (btn.dataset.action === "edit") { if (data.edited) { showToast("Messages can only be edited once", "warning"); return; } openEditModal(id, data.text); }
       if (btn.dataset.action === "delete") confirmDeleteMsg(id);
     });
   });
 }
 
 function updateRenderedMessage(data, id) {
-  const row    = messagesArea.querySelector(`.msg-row[data-id="${id}"]`);
+  const row = messagesArea.querySelector(`.msg-row[data-id="${id}"]`);
   const bubble = row?.querySelector(".bubble");
   if (!bubble) return;
   const isMine = data.uid === ME?.uid;
-  const ts     = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+  const ts = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
   const timeStr = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   bubble.innerHTML = buildBubbleContent(data, timeStr, isMine);
   bubble.classList.toggle("deleted-msg", !!data.deleted);
@@ -2700,28 +2549,24 @@ function removeRenderedMessage(id) { messagesArea.querySelector(`.msg-row[data-i
 // EDIT MODAL
 // ═══════════════════════════════════════════════════════════════════════════════
 function openEditModal(id, currentText) { editingMsgId = id; editMsgInput.value = currentText; editMsgModal.classList.remove("hidden"); editMsgInput.focus(); }
-function closeEditModal()               { editMsgModal.classList.add("hidden"); editingMsgId = null; }
+function closeEditModal() { editMsgModal.classList.add("hidden"); editingMsgId = null; }
 
-editMsgClose?.addEventListener("click",  closeEditModal);
+editMsgClose?.addEventListener("click", closeEditModal);
 editMsgCancel?.addEventListener("click", closeEditModal);
-editMsgModal?.addEventListener("click",  (e) => { if (e.target === editMsgModal) closeEditModal(); });
+editMsgModal?.addEventListener("click", (e) => { if (e.target === editMsgModal) closeEditModal(); });
 
 editMsgSave?.addEventListener("click", async () => {
   const newText = editMsgInput.value.trim();
   if (!newText || !editingMsgId || !activeRoomId) return;
-  try {
-    await updateDoc(doc(db, "rooms", activeRoomId, "messages", editingMsgId), { text: newText, edited: true });
-    showToast("Message edited ✏️");
-  } catch { showToast("Edit failed", "error"); }
+  try { await updateDoc(doc(db, "rooms", activeRoomId, "messages", editingMsgId), { text: newText, edited: true }); showToast("Message edited ✏️"); }
+  catch { showToast("Edit failed", "error"); }
   closeEditModal();
 });
 
 async function confirmDeleteMsg(id) {
   if (!confirm("Delete this message?")) return;
-  try {
-    await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null, fileUrl: null });
-    showToast("Message deleted");
-  } catch { showToast("Delete failed", "error"); }
+  try { await updateDoc(doc(db, "rooms", activeRoomId, "messages", id), { text: "", deleted: true, fileData: null, fileUrl: null }); showToast("Message deleted"); }
+  catch { showToast("Delete failed", "error"); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2739,8 +2584,7 @@ async function sendMessage() {
       uid: ME.uid, name: ME.name, avatar: ME.avatar,
       text, type: "text", deleted: false, edited: false, createdAt: serverTimestamp(),
     });
-    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__"))
-      registerDmRoom(activeRoomId).catch(() => {});
+    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) registerDmRoom(activeRoomId).catch(() => { });
   } catch (err) { showToast("Failed to send: " + err.message, "error"); }
 }
 
@@ -2758,30 +2602,27 @@ async function sendFile(file, msgType) {
   showToast("Uploading…");
   try {
     const uniqueName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    const filePath   = `rooms/${activeRoomId}/${ME.uid}/${uniqueName}`;
-    const fileRef    = storageRef(storage, filePath);
-    const snapshot   = await uploadBytes(fileRef, file);
+    const filePath = `rooms/${activeRoomId}/${ME.uid}/${uniqueName}`;
+    const fileRef = storageRef(storage, filePath);
+    const snapshot = await uploadBytes(fileRef, file);
     const downloadURL = await getDownloadURL(snapshot.ref);
 
     await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
       uid: ME.uid, name: ME.name, avatar: ME.avatar,
-      text: file.name,
-      type: msgType === "image" ? "image" : "file",
+      text: file.name, type: msgType === "image" ? "image" : "file",
       fileName: file.name, fileSize: file.size,
       fileUrl: downloadURL, fileData: null, storagePath: filePath,
       deleted: false, edited: false, createdAt: serverTimestamp(),
     });
 
-    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__"))
-      registerDmRoom(activeRoomId).catch(() => {});
-
+    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) registerDmRoom(activeRoomId).catch(() => { });
     showToast("File sent! ✓");
   } catch (err) { showToast("Upload failed: " + err.message, "error"); }
 }
 
 imgFileInput?.addEventListener("change", () => { if (imgFileInput.files[0]) sendFile(imgFileInput.files[0], "image"); imgFileInput.value = ""; closeAttachMenu(); });
-docFileInput?.addEventListener("change", () => { if (docFileInput.files[0]) sendFile(docFileInput.files[0], "file");  docFileInput.value = ""; closeAttachMenu(); });
-anyFileInput?.addEventListener("change", () => { if (anyFileInput.files[0]) sendFile(anyFileInput.files[0], "file");  anyFileInput.value = ""; closeAttachMenu(); });
+docFileInput?.addEventListener("change", () => { if (docFileInput.files[0]) sendFile(docFileInput.files[0], "file"); docFileInput.value = ""; closeAttachMenu(); });
+anyFileInput?.addEventListener("change", () => { if (anyFileInput.files[0]) sendFile(anyFileInput.files[0], "file"); anyFileInput.value = ""; closeAttachMenu(); });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ATTACH MENU
@@ -2799,9 +2640,7 @@ msgInput?.addEventListener("input", async () => {
   const now = Date.now();
   if (now - lastTypingSent > 1800) {
     lastTypingSent = now;
-    await setDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid), {
-      uid: ME.uid, name: ME.name, avatar: ME.avatar, ts: serverTimestamp(),
-    });
+    await setDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid), { uid: ME.uid, name: ME.name, avatar: ME.avatar, ts: serverTimestamp() });
   }
   clearTimeout(typingTimer);
   typingTimer = setTimeout(clearMyTyping, 2500);
@@ -2809,7 +2648,7 @@ msgInput?.addEventListener("input", async () => {
 
 async function clearMyTyping() {
   if (!ME || !activeRoomId) return;
-  try { await deleteDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid)); } catch (_) {}
+  try { await deleteDoc(doc(db, "rooms", activeRoomId, "typing", ME.uid)); } catch (_) { }
 }
 
 function listenTyping(roomId) {
@@ -2821,7 +2660,7 @@ function listenTyping(roomId) {
       typingAv.style.cssText = "background:" + colorFor(t.name) + ";width:26px;height:26px;border-radius:50%;";
       typingRow.classList.remove("hidden");
       chStatus.textContent = `${t.name} is typing…`;
-      chStatus.className   = "ch-status typing";
+      chStatus.className = "ch-status typing";
     } else {
       typingRow.classList.add("hidden");
       restoreChatStatus();
@@ -2851,7 +2690,7 @@ emojiToggleBtn?.addEventListener("click", (e) => {
 });
 document.addEventListener("click", (e) => { if (!emojiPanel?.contains(e.target) && e.target !== emojiToggleBtn) closeEmojiPanel(); });
 
-function openEmojiPanel()  { emojiPanel.classList.remove("hidden"); renderEmojiTab(currentEmojiTab); }
+function openEmojiPanel() { emojiPanel.classList.remove("hidden"); renderEmojiTab(currentEmojiTab); }
 function closeEmojiPanel() { emojiPanel?.classList.add("hidden"); }
 
 document.querySelectorAll(".etab").forEach(btn => {
@@ -2870,7 +2709,7 @@ function renderEmojiTab(tab) {
     grid.className = "emoji-grid";
     EMOJIS.forEach(em => {
       const btn = document.createElement("div");
-      btn.className   = "emoji-btn-item";
+      btn.className = "emoji-btn-item";
       btn.textContent = em;
       btn.addEventListener("click", () => { msgInput.value += em; msgInput.focus(); });
       grid.appendChild(btn);
@@ -2881,7 +2720,7 @@ function renderEmojiTab(tab) {
     grid.className = "sticker-grid";
     STICKERS.forEach(st => {
       const item = document.createElement("div");
-      item.className   = "sticker-item";
+      item.className = "sticker-item";
       item.textContent = st;
       item.addEventListener("click", () => sendSticker(st));
       grid.appendChild(item);
@@ -2900,8 +2739,7 @@ async function sendSticker(sticker) {
     uid: ME.uid, name: ME.name, avatar: ME.avatar,
     text: sticker, type: "sticker", deleted: false, createdAt: serverTimestamp(),
   });
-  if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__"))
-    registerDmRoom(activeRoomId).catch(() => {});
+  if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) registerDmRoom(activeRoomId).catch(() => { });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2932,32 +2770,27 @@ async function _startRecording() {
   if (!ME || !activeRoomId) { showToast("Please open a chat first", "warning"); return; }
   if (isCurrentChatBlocked()) { showToast("Messaging unavailable", "warning"); return; }
   if (!navigator.mediaDevices?.getUserMedia) { showToast("Microphone not supported", "warning"); return; }
-
   try {
-    _recStream     = await navigator.mediaDevices.getUserMedia({ audio: true });
-    _audioChunks   = [];
+    _recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    _audioChunks = [];
     _mediaRecorder = new MediaRecorder(_recStream);
-
     _mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _audioChunks.push(e.data); };
-    _mediaRecorder.onstop          = async () => {
-      const blob     = new Blob(_audioChunks, { type: "audio/webm" });
-      _audioChunks   = [];
+    _mediaRecorder.onstop = async () => {
+      const blob = new Blob(_audioChunks, { type: "audio/webm" });
+      _audioChunks = [];
       _recStream?.getTracks().forEach(t => t.stop());
       _recStream = null;
       await _uploadAndSendVoice(blob, _fmtRecTime(_recSeconds));
     };
-
     _mediaRecorder.start(200);
     _isRecording = true;
-    _recSeconds  = 0;
+    _recSeconds = 0;
     _showRecordingUI();
-
     _recInterval = setInterval(() => {
       _recSeconds++;
       if (recTimeEl) recTimeEl.textContent = _fmtRecTime(_recSeconds);
       if (_recSeconds >= 120) _stopRecording(true);
     }, 1000);
-
   } catch (err) {
     showToast(err.name === "NotAllowedError" ? "Microphone permission denied." : "Mic error: " + err.message, "warning");
   }
@@ -2968,13 +2801,12 @@ function _stopRecording(send) {
   _isRecording = false;
   clearInterval(_recInterval);
   _hideRecordingUI();
-
   if (send && _mediaRecorder && _mediaRecorder.state !== "inactive") {
     _mediaRecorder.stop();
   } else {
     _audioChunks = [];
     _recStream?.getTracks().forEach(t => t.stop());
-    _recStream     = null;
+    _recStream = null;
     _mediaRecorder = null;
     showToast("Recording cancelled");
   }
@@ -2984,22 +2816,18 @@ async function _uploadAndSendVoice(blob, duration) {
   if (!ME || !activeRoomId || isCurrentChatBlocked()) { showToast("Messaging unavailable", "warning"); return; }
   showToast("Sending voice message…");
   try {
-    const fileName  = `voice_${Date.now()}.webm`;
-    const filePath  = `rooms/${activeRoomId}/${ME.uid}/${fileName}`;
-    const fileRef   = storageRef(storage, filePath);
-    const snapshot  = await uploadBytes(fileRef, blob);
+    const fileName = `voice_${Date.now()}.webm`;
+    const filePath = `rooms/${activeRoomId}/${ME.uid}/${fileName}`;
+    const fileRef = storageRef(storage, filePath);
+    const snapshot = await uploadBytes(fileRef, blob);
     const downloadURL = await getDownloadURL(snapshot.ref);
-
     await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
       uid: ME.uid, name: ME.name, avatar: ME.avatar,
       text: "Voice message", type: "voice",
       fileUrl: downloadURL, fileName, fileSize: blob.size, storagePath: filePath,
       duration, deleted: false, edited: false, createdAt: serverTimestamp(),
     });
-
-    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__"))
-      registerDmRoom(activeRoomId).catch(() => {});
-
+    if (activeRoomId !== ROOM_GENERAL && !activeRoomId.startsWith("group__")) registerDmRoom(activeRoomId).catch(() => { });
     showToast(`Voice message sent (${duration}) 🎤`);
   } catch (err) { showToast("Voice upload failed: " + err.message, "error"); }
 }
@@ -3007,10 +2835,9 @@ async function _uploadAndSendVoice(blob, duration) {
 function initMicButton() {
   if (!micBtn) return;
   micBtn.addEventListener("click", () => { _isRecording ? _stopRecording(true) : _startRecording(); });
-
   let _touchStartX = 0;
   micBtn.addEventListener("touchstart", (e) => { _touchStartX = e.touches[0].clientX; }, { passive: true });
-  micBtn.addEventListener("touchmove",  (e) => { if (_isRecording && e.touches[0].clientX - _touchStartX < -60) _stopRecording(false); }, { passive: true });
+  micBtn.addEventListener("touchmove", (e) => { if (_isRecording && e.touches[0].clientX - _touchStartX < -60) _stopRecording(false); }, { passive: true });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3039,15 +2866,11 @@ searchClearBtn?.addEventListener("click", () => {
 
 async function runContactSearch(q) {
   searchResultsList.innerHTML = `<li class="search-no-result">Searching…</li>`;
-  const results     = [];
+  const results = [];
   const roomsToSearch = [{ roomId: ROOM_GENERAL, name: getGeneralChatName() }];
 
-  getAllPresenceUsers().filter(u => u.uid !== ME.uid).forEach(u =>
-    roomsToSearch.push({ roomId: getRoomId(ME.uid, u.uid), name: u.name })
-  );
-  allDmRooms().forEach(r => {
-    if (!roomsToSearch.find(x => x.roomId === r.roomId)) roomsToSearch.push({ roomId: r.roomId, name: r.name });
-  });
+  getAllPresenceUsers().filter(u => u.uid !== ME.uid).forEach(u => roomsToSearch.push({ roomId: getRoomId(ME.uid, u.uid), name: u.name }));
+  allDmRooms().forEach(r => { if (!roomsToSearch.find(x => x.roomId === r.roomId)) roomsToSearch.push({ roomId: r.roomId, name: r.name }); });
   allGroups.forEach(g => roomsToSearch.push({ roomId: `group__${g.id}`, name: g.name }));
 
   for (const room of roomsToSearch) {
@@ -3061,20 +2884,17 @@ async function runContactSearch(q) {
           results.push({ roomId: room.roomId, roomName: room.name, msgId: d.id, text: data.text, senderName: data.name, ts });
         }
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
-  if (!results.length) {
-    searchResultsList.innerHTML = `<li class="search-no-result">No messages found for "${escHtml(q)}"</li>`;
-    return;
-  }
+  if (!results.length) { searchResultsList.innerHTML = `<li class="search-no-result">No messages found for "${escHtml(q)}"</li>`; return; }
 
   const roomsMap = Object.fromEntries(roomsToSearch.map(r => [r.roomId, r]));
   searchResultsList.innerHTML =
     `<li class="search-result-label">Messages (${results.length})</li>` +
     results.slice(0, 40).map(r => {
       const highlighted = escHtml(r.text).replace(new RegExp(escHtml(q), "gi"), m => `<mark>${m}</mark>`);
-      const timeStr     = r.ts.toLocaleDateString([], { month: "short", day: "numeric" });
+      const timeStr = r.ts.toLocaleDateString([], { month: "short", day: "numeric" });
       return `<li class="search-result-msg" data-room="${r.roomId}" data-msg="${r.msgId}">
         <div class="srm-name">${escHtml(r.roomName)} · ${escHtml(r.senderName)}</div>
         <div class="srm-text">${highlighted}</div>
@@ -3085,12 +2905,12 @@ async function runContactSearch(q) {
   searchResultsList.querySelectorAll(".search-result-msg").forEach(el => {
     el.addEventListener("click", () => {
       const roomId = el.dataset.room;
-      const room   = roomsMap[roomId];
+      const room = roomsMap[roomId];
       if (!room) return;
-      const target  = getAllPresenceUsers().find(u => getRoomId(ME.uid, u.uid) === roomId);
+      const target = getAllPresenceUsers().find(u => getRoomId(ME.uid, u.uid) === roomId);
       const isPublic = roomId === ROOM_GENERAL;
-      const isGroup  = roomId.startsWith("group__");
-      const grpData  = isGroup ? allGroups.find(g => `group__${g.id}` === roomId) : null;
+      const isGroup = roomId.startsWith("group__");
+      const grpData = isGroup ? allGroups.find(g => `group__${g.id}` === roomId) : null;
       openRoom(roomId, room.name, target?.avatar || null, isPublic, target || null, isGroup, grpData);
       highlightContact(target?.uid || ROOM_GENERAL);
       mobileChatOpen();
@@ -3121,7 +2941,7 @@ chatSearchInput?.addEventListener("input", () => {
   const q = chatSearchInput.value.trim().toLowerCase();
   clearSearchHighlights();
   if (!q) { chatSearchCount.textContent = ""; searchMatches = []; searchCurrentIdx = -1; return; }
-  searchMatches    = Array.from(messagesArea.querySelectorAll(".msg-row")).filter(row => row.querySelector(".bubble")?.textContent?.toLowerCase().includes(q));
+  searchMatches = Array.from(messagesArea.querySelectorAll(".msg-row")).filter(row => row.querySelector(".bubble")?.textContent?.toLowerCase().includes(q));
   chatSearchCount.textContent = searchMatches.length ? `1/${searchMatches.length}` : "No results";
   searchCurrentIdx = searchMatches.length ? 0 : -1;
   highlightSearchMatches();
@@ -3179,7 +2999,7 @@ function renderNewChatList(users) {
   if (!users.length) { newChatUserList.innerHTML = `<li class="modal-empty">No users found</li>`; return; }
   newChatUserList.innerHTML = users.map(u => {
     const color = colorFor(u.name);
-    const av    = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
+    const av = u.avatar ? `<img src="${escHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : u.name.charAt(0).toUpperCase();
     return `
       <li class="modal-user-item" data-uid="${u.uid}">
         <div class="modal-user-av" style="background:${color};">${av}<div class="modal-online-dot ${u.online ? "online" : "offline"}"></div></div>
