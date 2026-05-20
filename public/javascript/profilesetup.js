@@ -1,4 +1,4 @@
-// profilesetup.js — Full update: location, validations, Firestore save
+// profilesetup.js — 
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
