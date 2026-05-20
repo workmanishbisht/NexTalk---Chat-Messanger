@@ -1,16 +1,4 @@
 // chatdashboard.js
-// ✅ AVATAR FIXES:
-//   1. buildAvatarEl now accepts a forceRefresh flag to bust image cache
-//   2. refreshAllProfileImages() surgically updates every avatar node without
-//      triggering full re-renders that overwrite the DOM before paint
-//   3. listenOwnPresence() uses onSnapshot on own presence doc for real-time sync
-//   4. initIpAvatarEdit() calls refreshAllProfileImages() after upload instead of
-//      relying on renderOwnProfileInInfoPanel() which wipes avatars
-//   5. updateSidebarAvatarInfo() and renderOwnProfileInInfoPanel() no longer
-//      touch the .sidebar-avatar img src / innerHTML — they defer to refreshAllProfileImages()
-//   6. Presence listener skips calling refreshAllProfileImages() if avatarUrl
-//      already matches ME.avatar to avoid redundant re-renders
-//   7. All avatar img elements get a ?cb=timestamp cache-buster on src
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
