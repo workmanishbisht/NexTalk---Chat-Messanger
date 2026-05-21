@@ -175,7 +175,6 @@ function getFileIcon(filename) {
 }
 
 // ─── Cache-busting helper ────────────────────────────────────────────────────
-// Appends ?cb=<timestamp> so browsers don't serve the old avatar from cache.
 function bustCache(url) {
   if (!url) return url;
   try {
@@ -183,20 +182,16 @@ function bustCache(url) {
     u.searchParams.set("cb", Date.now());
     return u.toString();
   } catch {
-    // url might be a relative or data: url — return as-is
     return url;
   }
 }
 
 // ─── Core avatar render ───────────────────────────────────────────────────────
-// Sets background + either an <img> or a text initial inside `el`.
-// Pass bust=true when you want to force-refresh a cached image.
 function buildAvatarEl(el, name, avatarUrl, bust = false) {
   if (!el) return;
   el.style.background = colorFor(name || "?");
   const src = (bust && avatarUrl) ? bustCache(avatarUrl) : (avatarUrl || "");
   if (src) {
-    // Reuse existing <img> if present — just swap src (avoids flicker)
     let img = el.querySelector("img");
     if (!img) {
       el.innerHTML = "";
@@ -378,6 +373,24 @@ const recTimerEl = $("recTimer");
 const recTimeEl = $("recTime");
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ✅ RESOLVE AVATAR — Google auth users get photoURL, email users get setup photo
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Returns the correct avatar URL for the current user:
+ * - Google sign-in  → firebaseUser.photoURL (Google profile picture)
+ * - Email/password  → avatar stored in localStorage profile (uploaded during setup)
+ * Never changes after setup; dashboard aside has no upload button.
+ */
+function resolveMyAvatar(firebaseUser, localProfile) {
+  // Google / OAuth providers have photoURL
+  if (firebaseUser.photoURL) {
+    return firebaseUser.photoURL;
+  }
+  // Email/password — use whatever was saved during profile-setup
+  return localProfile?.avatar || "";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ✅ REFRESH ALL PROFILE IMAGES — surgical update, no DOM re-creation
 // ═══════════════════════════════════════════════════════════════════════════════
 function refreshAllProfileImages() {
@@ -385,31 +398,31 @@ function refreshAllProfileImages() {
   const url = ME.avatar || "";
   const name = ME.name || "?";
 
-  // ── 1. Sidebar nav avatar (the small circle in the bottom of the sidebar) ──
+  // 1. Sidebar nav avatar
   buildAvatarEl(sidebarAvatar, name, url, true);
 
-  // ── 2. avatarWrap mobile sidebar block ────────────────────────────────────
+  // 2. avatarWrap mobile sidebar block
   const avEl = avatarWrap?.querySelector(".sidebar-avatar");
   if (avEl && avEl !== sidebarAvatar) buildAvatarEl(avEl, name, url, true);
 
-  // ── 3. Right info-panel avatar ─────────────────────────────────────────────
+  // 3. Right info-panel avatar (read-only, no upload overlay)
   buildAvatarEl(ipAvatar, name, url, true);
   if (ipAvatar) {
     ipAvatar.style.width = "72px";
     ipAvatar.style.height = "72px";
   }
 
-  // ── 4. View-profile panel when viewing own profile ─────────────────────────
+  // 4. View-profile panel when viewing own profile
   if (currentViewedUid === ME.uid && vpAvatar) {
     buildAvatarEl(vpAvatar, name, url, true);
   }
 
-  // ── 5. Sent message bubbles — avatar beside own messages ──────────────────
+  // 5. Sent message bubbles
   messagesArea?.querySelectorAll(".msg-row.sent .msg-av").forEach(el => {
     buildAvatarEl(el, name, url, true);
   });
 
-  // ── 6. Online strip pill for ourselves ────────────────────────────────────
+  // 6. Online strip pill for ourselves
   onlineStrip?.querySelectorAll(".online-pill").forEach(pill => {
     const nameEl = pill.querySelector(".op-name");
     if (nameEl && (nameEl.textContent.includes("(you)") || nameEl.textContent.trim() === name || nameEl.textContent.includes(name))) {
@@ -417,14 +430,12 @@ function refreshAllProfileImages() {
     }
   });
 
-  // ── 7. allChatList — own entry if visible ─────────────────────────────────
+  // 7. allChatList — own entry if visible
   allChatList?.querySelectorAll(`.chat-item[data-id="${ME.uid}"] .ci-avatar`).forEach(el => {
     buildAvatarEl(el, name, url, true);
   });
 
-  // ── 8. Re-attach the hover-edit overlay without full re-render ────────────
-  // (small delay so any ongoing paint finishes first)
-  setTimeout(() => initIpAvatarEdit(), 60);
+  // NOTE: initIpAvatarEdit() is NOT called here — avatar editing is disabled on dashboard.
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -439,6 +450,8 @@ function listenOwnPresence() {
     const data = snap.data();
     let changed = false;
 
+    // Only sync avatar from presence if it matches our resolved avatar
+    // (prevents overwrite from old data that might differ from Google photo)
     if (data.avatar && data.avatar !== ME.avatar) {
       ME.avatar = data.avatar;
       const profile = loadMyProfile(ME.uid);
@@ -582,6 +595,8 @@ function resetInfoPanelFields() {
     ipAvatar.innerHTML = "";
     ipAvatar.style.width = "72px";
     ipAvatar.style.height = "72px";
+    // Ensure no cursor/pointer that implies clickability
+    ipAvatar.style.cursor = "default";
   }
 
   clearHtml(ipEmail); clearHtml(ipPhone); clearHtml(ipDob);
@@ -672,10 +687,19 @@ onAuthStateChanged(auth, async (user) => {
   const profile = loadMyProfile(user.uid);
   if (!profile?.setupDone) { window.location.href = "./profile-setup.html"; return; }
 
+  // ── Resolve avatar: Google photo OR setup-uploaded photo ──────────────────
+  const resolvedAvatar = resolveMyAvatar(user, profile);
+
+  // If Google user and local profile doesn't have the Google photo yet, save it
+  if (user.photoURL && profile.avatar !== user.photoURL) {
+    profile.avatar = user.photoURL;
+    localStorage.setItem(`nextalk_profile_${user.uid}`, JSON.stringify(profile));
+  }
+
   ME = {
     uid: user.uid,
     name: profile.name,
-    avatar: profile.avatar || "",
+    avatar: resolvedAvatar,
     status: profile.status || "Hey there! I'm using NexTalk",
     email: profile.email || user.email || "",
     phone: profile.phone || "",
@@ -728,7 +752,7 @@ async function init() {
   listenPresence();
   listenGroups();
   listenBlockedUsers();
-  listenOwnPresence();   // ✅ real-time own avatar/status
+  listenOwnPresence();
 
   openRoom(ROOM_GENERAL, getGeneralChatName(), null, true, null, false);
   startPresenceHeartbeat();
@@ -737,7 +761,7 @@ async function init() {
   initMicButton();
   initIpBlockBtn();
   initSidebarAvatarClick();
-  initIpAvatarEdit();
+  // ✅ NO initIpAvatarEdit() — profile photo is locked after setup
 }
 
 // ─── Sidebar mobile name/email ────────────────────────────────────────────────
@@ -767,8 +791,6 @@ function updateSidebarAvatarInfo() {
     chevron.className = "ri-arrow-up-s-line avatar-chevron";
     avatarWrap.appendChild(chevron);
   }
-  // NOTE: we do NOT touch .sidebar-avatar here — avatar is managed exclusively
-  // by buildAvatarEl / refreshAllProfileImages to prevent overwrite races.
 }
 
 // ─── Sidebar avatar click → own profile panel ─────────────────────────────────
@@ -857,86 +879,15 @@ function renderOwnProfileInVpPanel() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ✅ AVATAR EDIT OVERLAY — uploads, updates state + Firestore, then surgically
-//    refreshes every avatar node without triggering full re-renders.
+// ✅ AVATAR EDIT DISABLED ON DASHBOARD
+// Profile photo is set permanently during profile-setup and cannot be changed
+// from the dashboard. The ip-avatar-ring in the aside has no upload overlay.
+// To change their photo, users must go through the profile-setup page.
+//
+// For Google users  → photoURL is always used automatically.
+// For email users   → the image uploaded during setup is always used.
 // ═══════════════════════════════════════════════════════════════════════════════
-function initIpAvatarEdit() {
-  if (!ipAvatar) return;
-  const ring = ipAvatar.closest(".ip-avatar-ring");
-  if (!ring) return;
-
-  // Remove stale overlay / hidden input to avoid duplicates
-  ring.querySelector(".ip-avatar-edit-overlay")?.remove();
-  document.getElementById("ipAvatarFileInput")?.remove();
-
-  const overlay = document.createElement("div");
-  overlay.className = "ip-avatar-edit-overlay";
-  overlay.innerHTML = `<i class="ri-camera-line"></i><span>Change</span>`;
-  overlay.style.cssText = `
-    position:absolute;inset:0;border-radius:50%;
-    background:rgba(0,0,0,0.48);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:3px;opacity:0;transition:opacity .2s;cursor:pointer;z-index:2;
-    color:#fff;font-size:11px;font-weight:600;font-family:'Work Sans',sans-serif;
-  `;
-  overlay.querySelector("i").style.cssText = "font-size:22px;line-height:1;";
-
-  ring.style.position = "relative";
-  ring.style.cursor = "pointer";
-  ring.appendChild(overlay);
-
-  ring.addEventListener("mouseenter", () => { overlay.style.opacity = "1"; });
-  ring.addEventListener("mouseleave", () => { overlay.style.opacity = "0"; });
-
-  const fileInput = document.createElement("input");
-  fileInput.type = "file";
-  fileInput.accept = "image/*";
-  fileInput.style.display = "none";
-  fileInput.id = "ipAvatarFileInput";
-  document.body.appendChild(fileInput);
-
-  overlay.addEventListener("click", () => fileInput.click());
-
-  fileInput.addEventListener("change", async () => {
-    const file = fileInput.files[0];
-    if (!file || !ME) return;
-    if (file.size > 5 * 1024 * 1024) { showToast("Image too large. Max 5 MB.", "warning"); return; }
-
-    showToast("Uploading avatar…");
-    try {
-      const ext = file.name.split(".").pop();
-      const uniqueName = `avatar_${ME.uid}_${Date.now()}.${ext}`;
-      const path = `avatars/${ME.uid}/${uniqueName}`;
-      const ref = storageRef(storage, path);
-      const snapshot = await uploadBytes(ref, file);
-      const url = await getDownloadURL(snapshot.ref);
-
-      // ── 1. Update ME state ─────────────────────────────────────────────────
-      ME.avatar = url;
-
-      // ── 2. Persist to localStorage ────────────────────────────────────────
-      const profile = loadMyProfile(ME.uid);
-      if (profile) {
-        profile.avatar = url;
-        localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
-      }
-
-      // ── 3. Push to Firestore (triggers onSnapshot on other devices/tabs) ──
-      await Promise.all([
-        setDoc(doc(db, "users", ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
-        setDoc(doc(db, "presence", ME.uid), { avatar: url, updatedAt: serverTimestamp() }, { merge: true }),
-      ]);
-
-      // ── 4. Surgically update every avatar node — no full re-render ─────────
-      refreshAllProfileImages();
-
-      showToast("Avatar updated ✓");
-    } catch (err) {
-      showToast("Upload failed: " + err.message, "error");
-    }
-    fileInput.value = "";
-  });
-}
+// initIpAvatarEdit() has been intentionally removed.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PRESENCE
@@ -1282,14 +1233,22 @@ function makeIconBtn(iconClass, title, color) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// OWN PROFILE — INFO PANEL
+// OWN PROFILE — INFO PANEL (READ-ONLY AVATAR)
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderOwnProfileInInfoPanel() {
   if (!ME) return;
   resetInfoPanelFields();
 
+  // ── Avatar: display only, no edit overlay ──────────────────────────────────
   buildAvatarEl(ipAvatar, ME.name, ME.avatar, true);
-  if (ipAvatar) { ipAvatar.style.width = "72px"; ipAvatar.style.height = "72px"; }
+  if (ipAvatar) {
+    ipAvatar.style.width = "72px";
+    ipAvatar.style.height = "72px";
+    ipAvatar.style.cursor = "default"; // not clickable
+    // Remove any accidental ring cursor
+    const ring = ipAvatar.closest(".ip-avatar-ring");
+    if (ring) ring.style.cursor = "default";
+  }
 
   if (ipName) ipName.textContent = ME.name;
   if (ipUsername) ipUsername.textContent = `@${ME.name.toLowerCase().replace(/\s+/g, "")}`;
@@ -1324,8 +1283,7 @@ function renderOwnProfileInInfoPanel() {
   ipExtraSection?.classList.remove("hidden");
   ipGroupMembersSection?.classList.add("hidden");
 
-  // Re-attach avatar overlay after re-render
-  setTimeout(() => initIpAvatarEdit(), 60);
+  // ✅ Do NOT call initIpAvatarEdit() — avatar is read-only on dashboard
 }
 
 function renderLocationField(el, location) {
@@ -1443,17 +1401,8 @@ function listenPresence() {
         online, lastSeen: data.updatedAt || data.lastSeen || null,
       });
 
-      // ✅ Own presence changed from another device/tab — update avatar if needed
-      if (uid === ME?.uid && data.avatar && data.avatar !== ME.avatar) {
-        ME.avatar = data.avatar;
-        const profile = loadMyProfile(ME.uid);
-        if (profile) {
-          profile.avatar = data.avatar;
-          localStorage.setItem(`nextalk_profile_${ME.uid}`, JSON.stringify(profile));
-        }
-        // listenOwnPresence() will also fire, but it guards against double-refresh
-        refreshAllProfileImages();
-      }
+      // Own presence from another tab — only sync status, NOT avatar
+      // (avatar is resolved from auth/setup and should not be overwritten by presence)
       if (uid === ME?.uid && data.status && data.status !== ME.status) {
         ME.status = data.status;
         if (ipAbout && !ipAbout.parentElement?.querySelector(".about-edit-wrap"))
