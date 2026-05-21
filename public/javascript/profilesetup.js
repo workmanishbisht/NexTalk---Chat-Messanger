@@ -1,4 +1,4 @@
-// profilesetup.js — 
+// profilesetup.js — Production Ready (Firestore as main source of truth)
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -6,6 +6,7 @@ import {
     getFirestore,
     doc,
     setDoc,
+    getDoc,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -24,63 +25,57 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ─── Elements ─────────────────────────────────────────────────────────────
-const fullNameInput = document.getElementById("fullName");
-const statusInput = document.getElementById("statusText");
-const avatarInput = document.getElementById("avatarInput");
-const avatarPreview = document.getElementById("avatarPreview");
-const avatarPlaceholder = document.getElementById("avatarPlaceholder");
-const continueBtn = document.getElementById("continueBtn");
-const skipBtn = document.getElementById("skipBtn");
-const nameErr = document.getElementById("nameErr");
-const phoneErr = document.getElementById("phoneErr");
-const emailErr = document.getElementById("emailErr");
-const dobErr = document.getElementById("dobErr");
-const locationErr = document.getElementById("locationErr");
-const toastContainer = document.getElementById("toastContainer");
-const phoneInput = document.getElementById("phoneNumber");
-const countryCode = document.getElementById("countryCode");
-const emailInput = document.getElementById("emailInput");
-const dobInput = document.getElementById("dobInput");
+const fullNameInput       = document.getElementById("fullName");
+const statusInput         = document.getElementById("statusText");
+const avatarInput         = document.getElementById("avatarInput");
+const avatarPreview       = document.getElementById("avatarPreview");
+const avatarPlaceholder   = document.getElementById("avatarPlaceholder");
+const continueBtn         = document.getElementById("continueBtn");
+const skipBtn             = document.getElementById("skipBtn");
+const nameErr             = document.getElementById("nameErr");
+const phoneErr            = document.getElementById("phoneErr");
+const emailErr            = document.getElementById("emailErr");
+const dobErr              = document.getElementById("dobErr");
+const locationErr         = document.getElementById("locationErr");
+const toastContainer      = document.getElementById("toastContainer");
+const phoneInput          = document.getElementById("phoneNumber");
+const countryCode         = document.getElementById("countryCode");
+const emailInput          = document.getElementById("emailInput");
+const dobInput            = document.getElementById("dobInput");
 
 // Interests
-const interestsWrap = document.getElementById("interestsWrap");
-const interestsDropdown = document.getElementById("interestsDropdown");
-const interestsChevron = document.getElementById("interestsChevron");
+const interestsWrap       = document.getElementById("interestsWrap");
+const interestsDropdown   = document.getElementById("interestsDropdown");
+const interestsChevron    = document.getElementById("interestsChevron");
 const interestsPlaceholder = document.getElementById("interestsPlaceholder");
 
 // Location
-const detectLocationBtn = document.getElementById("detectLocationBtn");
-const manualLocationBtn = document.getElementById("manualLocationBtn");
-const locationResult = document.getElementById("locationResult");
-const locationDisplay = document.getElementById("locationDisplay");
-const locationOptions = document.getElementById("locationOptions");
-const changeLocationBtn = document.getElementById("changeLocationBtn");
-const locationManualWrap = document.getElementById("locationManualWrap");
+const detectLocationBtn   = document.getElementById("detectLocationBtn");
+const manualLocationBtn   = document.getElementById("manualLocationBtn");
+const locationResult      = document.getElementById("locationResult");
+const locationDisplay     = document.getElementById("locationDisplay");
+const locationOptions     = document.getElementById("locationOptions");
+const changeLocationBtn   = document.getElementById("changeLocationBtn");
+const locationManualWrap  = document.getElementById("locationManualWrap");
 const locationManualInput = document.getElementById("locationManualInput");
 const locManualConfirmBtn = document.getElementById("locManualConfirmBtn");
-const locationDetecting = document.getElementById("locationDetecting");
+const locationDetecting   = document.getElementById("locationDetecting");
 
 // Modal
-const locationPermModal = document.getElementById("locationPermModal");
-const modalAllowBtn = document.getElementById("modalAllowBtn");
-const modalDenyBtn = document.getElementById("modalDenyBtn");
+const locationPermModal   = document.getElementById("locationPermModal");
+const modalAllowBtn       = document.getElementById("modalAllowBtn");
+const modalDenyBtn        = document.getElementById("modalDenyBtn");
 
 // ─── State ────────────────────────────────────────────────────────────────
-let selectedGender = "";
+let selectedGender    = "";
 let selectedInterests = [];
-let selectedLocation = {
-    city: "",
-    country: "",
-    display: "",
-    lat: null,
-    lng: null
-};
+let selectedLocation  = { city: "", country: "", display: "", lat: null, lng: null };
 
 // ─── Toast ────────────────────────────────────────────────────────────────
 function showToast(message, type = "success") {
     const icons = {
         success: "ri-checkbox-circle-line",
-        error: "ri-error-warning-line",
+        error:   "ri-error-warning-line",
         warning: "ri-alert-line"
     };
     const toast = document.createElement("div");
@@ -187,52 +182,46 @@ function renderInterestTags() {
 function showLocationResult(displayText) {
     selectedLocation.display = displayText;
     locationDisplay.textContent = displayText;
-    locationOptions.style.display = "none";
+    locationOptions.style.display   = "none";
     locationManualWrap.style.display = "none";
-    locationDetecting.style.display = "none";
-    locationResult.style.display = "flex";
+    locationDetecting.style.display  = "none";
+    locationResult.style.display     = "flex";
 }
 
 function resetLocationUI() {
     selectedLocation = { city: "", country: "", display: "", lat: null, lng: null };
-    locationResult.style.display = "none";
-    locationManualWrap.style.display = "none";
-    locationDetecting.style.display = "none";
-    locationOptions.style.display = "flex";
-    locationManualInput.value = "";
+    locationResult.style.display     = "none";
+    locationManualWrap.style.display  = "none";
+    locationDetecting.style.display   = "none";
+    locationOptions.style.display     = "flex";
+    locationManualInput.value         = "";
     clearError(locationErr);
 }
 
-// ─── Location: Reverse geocode using Open Nominatim (free, no key) ────────
+// ─── Location: Reverse geocode (Nominatim, free, no key) ─────────────────
 async function reverseGeocode(lat, lng) {
     try {
-        const res = await fetch(
+        const res  = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
             { headers: { "Accept-Language": "en" } }
         );
         const data = await res.json();
         const addr = data.address || {};
-        const city = addr.city || addr.town || addr.village || addr.county || "";
-        const state = addr.state || "";
+        const city    = addr.city || addr.town || addr.village || addr.county || "";
+        const state   = addr.state || "";
         const country = addr.country || "";
-        const parts = [city, state !== city ? state : "", country].filter(Boolean);
+        const parts   = [city, state !== city ? state : "", country].filter(Boolean);
         return { city, country, display: parts.join(", ") || data.display_name || `${lat}, ${lng}` };
     } catch {
         return { city: "", country: "", display: `${lat.toFixed(4)}, ${lng.toFixed(4)}` };
     }
 }
 
-// ─── Location: Permission Modal flow ─────────────────────────────────────
-function openPermissionModal() {
-    locationPermModal.style.display = "flex";
-}
-function closePermissionModal() {
-    locationPermModal.style.display = "none";
-}
+// ─── Location: Permission Modal ───────────────────────────────────────────
+function openPermissionModal()  { locationPermModal.style.display = "flex";  }
+function closePermissionModal() { locationPermModal.style.display = "none";  }
 
-detectLocationBtn.addEventListener("click", () => {
-    openPermissionModal();
-});
+detectLocationBtn.addEventListener("click", () => openPermissionModal());
 
 modalDenyBtn.addEventListener("click", () => {
     closePermissionModal();
@@ -245,9 +234,7 @@ modalAllowBtn.addEventListener("click", () => {
         showToast("Geolocation is not supported by your browser.", "error");
         return;
     }
-
-    // Show spinner
-    locationOptions.style.display = "none";
+    locationOptions.style.display  = "none";
     locationDetecting.style.display = "flex";
 
     navigator.geolocation.getCurrentPosition(
@@ -255,18 +242,15 @@ modalAllowBtn.addEventListener("click", () => {
             const { latitude, longitude } = pos.coords;
             selectedLocation.lat = latitude;
             selectedLocation.lng = longitude;
-
             const geo = await reverseGeocode(latitude, longitude);
-            selectedLocation.city = geo.city;
+            selectedLocation.city    = geo.city;
             selectedLocation.country = geo.country;
-
             showLocationResult(geo.display);
             showToast("Location detected successfully!", "success");
         },
         (err) => {
             locationDetecting.style.display = "none";
-            locationOptions.style.display = "flex";
-
+            locationOptions.style.display   = "flex";
             const msgs = {
                 1: "Location permission was denied by the browser.",
                 2: "Unable to determine your position.",
@@ -280,17 +264,14 @@ modalAllowBtn.addEventListener("click", () => {
 
 // Manual location
 manualLocationBtn.addEventListener("click", () => {
-    locationOptions.style.display = "none";
+    locationOptions.style.display    = "none";
     locationManualWrap.style.display = "flex";
     locationManualInput.focus();
 });
 
 function confirmManualLocation() {
     const val = locationManualInput.value.trim();
-    if (!val) {
-        setError(locationErr, "Please enter your location.");
-        return;
-    }
+    if (!val) { setError(locationErr, "Please enter your location."); return; }
     clearError(locationErr);
     selectedLocation = { city: "", country: "", display: val, lat: null, lng: null };
     showLocationResult(val);
@@ -302,19 +283,11 @@ locationManualInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") confirmManualLocation();
 });
 
-changeLocationBtn.addEventListener("click", () => {
-    resetLocationUI();
-});
+changeLocationBtn.addEventListener("click", () => resetLocationUI());
 
 // ─── Validation helpers ───────────────────────────────────────────────────
-function setError(el, msg) {
-    if (!el) return;
-    el.textContent = msg;
-}
-function clearError(el) {
-    if (!el) return;
-    el.textContent = "";
-}
+function setError(el, msg)  { if (!el) return; el.textContent = msg; }
+function clearError(el)     { if (!el) return; el.textContent = "";  }
 
 function validateName() {
     const val = fullNameInput.value.trim();
@@ -354,8 +327,7 @@ function validatePhone() {
 function validateEmail() {
     const val = emailInput.value.trim();
     if (!val) { clearError(emailErr); return true; } // optional
-    const emailReg = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailReg.test(val)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
         emailInput.classList.add("invalid");
         setError(emailErr, "Enter a valid email address.");
         return false;
@@ -395,81 +367,113 @@ function validateAll() {
 }
 
 // Live validation
-fullNameInput.addEventListener("input", () => { if (fullNameInput.value.trim()) validateName(); });
-phoneInput.addEventListener("input", () => { if (phoneInput.value.trim()) validatePhone(); else { phoneInput.classList.remove("invalid"); clearError(phoneErr); } });
-emailInput.addEventListener("input", () => { if (emailInput.value.trim()) validateEmail(); else { emailInput.classList.remove("invalid"); clearError(emailErr); } });
-dobInput.addEventListener("change", () => validateDOB());
+fullNameInput.addEventListener("input",  () => { if (fullNameInput.value.trim()) validateName(); });
+phoneInput.addEventListener("input",     () => { if (phoneInput.value.trim()) validatePhone(); else { phoneInput.classList.remove("invalid"); clearError(phoneErr); } });
+emailInput.addEventListener("input",     () => { if (emailInput.value.trim()) validateEmail(); else { emailInput.classList.remove("invalid"); clearError(emailErr); } });
+dobInput.addEventListener("change",      () => validateDOB());
 
 // ─── Profile helpers ──────────────────────────────────────────────────────
-function getProfileKey(uid) { return `nextalk_profile_${uid}`; }
-function saveProfileLocally(uid, d) { localStorage.setItem(getProfileKey(uid), JSON.stringify(d)); }
-function loadProfile(uid) { const r = localStorage.getItem(getProfileKey(uid)); return r ? JSON.parse(r) : null; }
-function isProfileComplete(uid) { const p = loadProfile(uid); return p && p.setupDone === true; }
+// localStorage used only as a local cache to speed up same-device redirects.
+// Firestore is the single source of truth.
+function getProfileKey(uid)        { return `nextalk_profile_${uid}`; }
+function cacheProfileLocally(uid, data) { localStorage.setItem(getProfileKey(uid), JSON.stringify(data)); }
 
-async function saveProfileToFirestore(uid, data) {
+async function isProfileComplete(uid) {
+    // 1. Fast path: local cache
     try {
-        const firestoreData = {
-            uid: data.uid,
-            name: data.name,
-            status: data.status,
-            email: data.email,
-            phone: data.phone,
-            dob: data.dob,
-            gender: data.gender,
-            interests: data.interests,
-            location: data.location,         // ← location object saved to Firestore
-            setupDone: data.setupDone,
-            createdAt: serverTimestamp(),
-            avatar: data.avatar && data.avatar.startsWith("http") ? data.avatar : "",
-        };
-        await setDoc(doc(db, "users", uid), firestoreData);
+        const raw = localStorage.getItem(getProfileKey(uid));
+        if (raw) {
+            const cached = JSON.parse(raw);
+            if (cached?.setupDone === true) return true;
+        }
+    } catch { /* ignore parse errors */ }
+
+    // 2. Authoritative path: Firestore
+    try {
+        const snap = await getDoc(doc(db, "users", uid));
+        if (snap.exists() && snap.data()?.setupDone === true) {
+            // Refresh local cache
+            cacheProfileLocally(uid, snap.data());
+            return true;
+        }
     } catch (err) {
-        console.warn("Firestore profile save failed (non-critical):", err);
+        console.warn("Firestore profile check failed:", err);
     }
+    return false;
 }
 
-// ─── Auth ─────────────────────────────────────────────────────────────────
-onAuthStateChanged(auth, (user) => {
-    if (!user) { window.location.href = "./authentication.html"; return; }
-    if (isProfileComplete(user.uid)) { window.location.href = "./chatdashboard.html"; return; }
+async function saveProfileToFirestore(uid, data) {
+    const firestoreData = {
+        uid:       data.uid,
+        name:      data.name,
+        status:    data.status,
+        email:     data.email,
+        phone:     data.phone,
+        dob:       data.dob,
+        gender:    data.gender,
+        interests: data.interests,
+        location:  data.location,
+        setupDone: true,
+        updatedAt: serverTimestamp(),
+        // Only store avatar if it's a remote URL (base64 strings are too large for Firestore)
+        avatar:    data.avatar && data.avatar.startsWith("http") ? data.avatar : "",
+    };
+    await setDoc(doc(db, "users", uid), firestoreData, { merge: true });
+}
+
+// ─── Auth state ───────────────────────────────────────────────────────────
+onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+        window.location.href = "./authentication.html";
+        return;
+    }
+    try {
+        const complete = await isProfileComplete(user.uid);
+        if (complete) {
+            window.location.href = "./chatdashboard.html";
+            return;
+        }
+    } catch (err) {
+        console.warn("Profile check error (proceeding to setup):", err);
+    }
     prefillFromFirebase(user);
 });
 
 function prefillFromFirebase(user) {
     if (user.displayName) fullNameInput.value = user.displayName;
-    if (user.photoURL) setAvatarPreview(user.photoURL);
-    if (user.email) emailInput.value = user.email;
+    if (user.photoURL)    setAvatarPreview(user.photoURL);
+    if (user.email)       emailInput.value = user.email;
 }
 
 // ─── Build profile data ───────────────────────────────────────────────────
 function buildProfileData(user) {
-    const phone = phoneInput.value.trim();
+    const phone    = phoneInput.value.trim();
     const fullPhone = phone ? `${countryCode.value} ${phone}` : "";
     return {
-        uid: user.uid,
-        name: fullNameInput.value.trim(),
-        status: statusInput.value.trim() || "Hey there! I'm using NexTalk",
-        avatar: avatarPreview.src && avatarPreview.classList.contains("visible")
-            ? avatarPreview.src
-            : (user.photoURL || ""),
-        email: emailInput.value.trim() || user.email || "",
-        phone: fullPhone,
-        dob: dobInput.value || "",
-        gender: selectedGender || "",
+        uid:      user.uid,
+        name:     fullNameInput.value.trim(),
+        status:   statusInput.value.trim() || "Hey there! I'm using NexTalk",
+        avatar:   avatarPreview.src && avatarPreview.classList.contains("visible")
+                    ? avatarPreview.src
+                    : (user.photoURL || ""),
+        email:    emailInput.value.trim() || user.email || "",
+        phone:    fullPhone,
+        dob:      dobInput.value || "",
+        gender:   selectedGender || "",
         interests: selectedInterests,
         location: {
             display: selectedLocation.display || "",
-            city: selectedLocation.city || "",
+            city:    selectedLocation.city    || "",
             country: selectedLocation.country || "",
-            lat: selectedLocation.lat,
-            lng: selectedLocation.lng,
+            lat:     selectedLocation.lat,
+            lng:     selectedLocation.lng,
         },
-        setupDone: true,
-        createdAt: Date.now()
+        setupDone:  true,
+        createdAt:  Date.now()
     };
 }
 
-// ─── Continue ─────────────────────────────────────────────────────────────
+// ─── Continue button ──────────────────────────────────────────────────────
 continueBtn.addEventListener("click", async () => {
     if (!validateAll()) {
         showToast("Please fix the errors before continuing.", "error");
@@ -479,41 +483,61 @@ continueBtn.addEventListener("click", async () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    continueBtn.disabled = true;
+    continueBtn.disabled    = true;
     continueBtn.textContent = "Saving…";
 
-    const profileData = buildProfileData(user);
+    try {
+        const profileData = buildProfileData(user);
 
-    saveProfileLocally(user.uid, profileData);
-    await saveProfileToFirestore(user.uid, profileData);
+        // Save to Firestore (source of truth)
+        await saveProfileToFirestore(user.uid, profileData);
 
-    showToast("Profile saved! Taking you in 🎉", "success");
-    setTimeout(() => { window.location.href = "./chatdashboard.html"; }, 1300);
+        // Cache locally for fast future same-device checks
+        cacheProfileLocally(user.uid, profileData);
+
+        showToast("Profile saved! Taking you in 🎉", "success");
+        setTimeout(() => { window.location.href = "./chatdashboard.html"; }, 1300);
+    } catch (err) {
+        console.error("Profile save failed:", err);
+        showToast("Could not save profile. Please try again.", "error");
+        continueBtn.disabled    = false;
+        continueBtn.textContent = "Continue";
+    }
 });
 
-// ─── Skip ─────────────────────────────────────────────────────────────────
+// ─── Skip button ──────────────────────────────────────────────────────────
 skipBtn.addEventListener("click", async () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const profile = {
-        uid: user.uid,
-        name: user.displayName || fullNameInput.value.trim() || "NexTalk User",
-        status: "Hey there! I'm using NexTalk",
-        avatar: user.photoURL || "",
-        email: user.email || "",
-        phone: "",
-        dob: "",
-        gender: "",
-        interests: [],
-        location: { display: "", city: "", country: "", lat: null, lng: null },
-        setupDone: true,
-        createdAt: Date.now()
-    };
+    skipBtn.disabled    = true;
+    skipBtn.textContent = "Skipping…";
 
-    saveProfileLocally(user.uid, profile);
-    await saveProfileToFirestore(user.uid, profile);
+    try {
+        const profile = {
+            uid:      user.uid,
+            name:     user.displayName || fullNameInput.value.trim() || "NexTalk User",
+            status:   "Hey there! I'm using NexTalk",
+            avatar:   user.photoURL || "",
+            email:    user.email || "",
+            phone:    "",
+            dob:      "",
+            gender:   "",
+            interests: [],
+            location: { display: "", city: "", country: "", lat: null, lng: null },
+            setupDone: true,
+            createdAt: Date.now()
+        };
 
-    showToast("Skipped! You can update your profile later.", "warning");
-    setTimeout(() => { window.location.href = "./chatdashboard.html"; }, 1300);
+        await saveProfileToFirestore(user.uid, profile);
+        cacheProfileLocally(user.uid, profile);
+
+        showToast("Skipped! You can update your profile later.", "warning");
+        setTimeout(() => { window.location.href = "./chatdashboard.html"; }, 1300);
+    } catch (err) {
+        console.error("Skip save failed:", err);
+        showToast("Something went wrong. Please try again.", "error");
+        skipBtn.disabled    = false;
+        skipBtn.textContent = "Skip";
+    }
 });
